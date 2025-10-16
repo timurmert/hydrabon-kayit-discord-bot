@@ -143,6 +143,19 @@ class RegistrationModal(discord.ui.Modal, title="Kayıt Formu"):
             
             await interaction.followup.send(embed=embed, ephemeral=True)
             
+            # İstatistik veritabanına kaydet
+            try:
+                stats_cog = self.bot.get_cog("RegistrationStats")
+                if stats_cog:
+                    await stats_cog.add_registration(
+                        user_id=str(member.id),
+                        username=str(member),
+                        name=name,
+                        age=age
+                    )
+            except Exception as e:
+                print(f"[HATA] İstatistik veritabanına kaydedilirken hata: {type(e).__name__}: {e}")
+            
             # Log kanalına bildirim gönder
             try:
                 log_channel = guild.get_channel(LOG_CHANNEL_ID)
