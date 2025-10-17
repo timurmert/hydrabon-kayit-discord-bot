@@ -698,6 +698,7 @@ class Registration(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         
         UNREGISTERED_ROLE_ID = 1428496119213588521  # Verilecek rol
+        NITRO_BOOSTER_ROLE_ID = 1030490914411511869  # Nitro Booster rolü (kaldırılmayacak)
         
         try:
             # Kayıtsız rolünü al
@@ -710,8 +711,11 @@ class Registration(commands.Cog):
                     ephemeral=True
                 )
             
-            # Botun kendi rolünü kontrol et (everyone hariç)
-            user_roles = [role for role in kullanici.roles if role.name != "@everyone"]
+            # Rolleri filtrele (@everyone ve Nitro Booster hariç)
+            user_roles = [
+                role for role in kullanici.roles 
+                if role.name != "@everyone" and role.id != NITRO_BOOSTER_ROLE_ID
+            ]
             
             # Tüm rolleri kaldır
             if user_roles:
