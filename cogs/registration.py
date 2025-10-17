@@ -545,15 +545,40 @@ class RegistrationButton(discord.ui.View):
     def __init__(self, bot: commands.Bot):
         super().__init__(timeout=None)  # Kalıcı buton
         self.bot = bot
-    
-    @discord.ui.button(
-        label="Kayıt Ol",
-        style=discord.ButtonStyle.success,
-        emoji="📝",
-        custom_id="registration_button",
-        row=0
-    )
-    async def register_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        
+        # Butonları manuel olarak sıralı ekle
+        # 1. Kayıt Ol butonu (Yeşil)
+        register_btn = discord.ui.Button(
+            label="Kayıt Ol",
+            style=discord.ButtonStyle.success,
+            emoji="📝",
+            custom_id="registration_button",
+            row=0
+        )
+        register_btn.callback = self.register_button_callback
+        self.add_item(register_btn)
+
+        # 2. Yetkili Çağır butonu (Gri)
+        support_btn = discord.ui.Button(
+            label="Yetkili Çağır",
+            style=discord.ButtonStyle.danger,
+            emoji="⚠️",
+            custom_id="support_button",
+            row=0
+        )
+        support_btn.callback = self.support_button_callback
+        self.add_item(support_btn)
+        
+        # 3. Web Sitemiz butonu
+        self.add_item(discord.ui.Button(
+            label="Web Sitemiz",
+            emoji="🌐",
+            style=discord.ButtonStyle.link,
+            url="https://hydrabon.com/",
+            row=0
+        ))
+        
+    async def register_button_callback(self, interaction: discord.Interaction):
         """Kayıt Ol butonuna tıklandığında"""
         try:
             modal = RegistrationModal(self.bot)
@@ -568,25 +593,7 @@ class RegistrationButton(discord.ui.View):
             except:
                 print("[HATA] Kullanıcıya buton hatası mesajı gönderilemedi!")
     
-    @discord.ui.button(
-        label="Web Sitemiz",
-        style=discord.ButtonStyle.link,
-        emoji="🌐",
-        url="https://hydrabon.com/",
-        row=0
-    )
-    async def website_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Web sitesi butonu - Link butonu olduğu için bu fonksiyon çağrılmaz"""
-        pass
-    
-    @discord.ui.button(
-        label="Yetkili Çağır",
-        style=discord.ButtonStyle.secondary,
-        emoji="⚠️",
-        custom_id="support_button",
-        row=0
-    )
-    async def support_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def support_button_callback(self, interaction: discord.Interaction):
         """Yetkili Çağır butonuna tıklandığında"""
         try:
             embed = discord.Embed(
@@ -641,12 +648,13 @@ class Registration(commands.Cog):
         
         # Embed oluştur
         embed = discord.Embed(
-            title="🎉 Hoş Geldiniz!",
+            title="<:yazisiz_ana_logo:1394693679935000667> HydRaboN'a Hoş Geldiniz! <:yazisiz_ana_logo:1394693679935000667>",
             description=(
-                "**Sunucumuza hoş geldiniz!**\n\n"
-                "Kayıt olmak için aşağıdaki **Kayıt Ol** butonuna tıklayınız.\n"
-                "Açılacak formda gerçek isminizi ve yaşınızı giriniz.\n\n"
-                "**Not:** Girdiğiniz isim geçerli bir Türkçe isim olmalıdır."
+                "❓ [Biz Kimiz?](https://hydrabon.com/)\n\n"
+                "• Kayıt olmak için aşağıdaki **Kayıt Ol** butonuna tıklayınız.\n"
+                "• Açılacak formda **gerçek** isminizi ve yaşınızı giriniz.\n"
+                "• Lütfen **geçerli** bir isim ve yaş girdiğinizden emin olunuz.\n\n"
+                "⚠️ Geçerli bilgiler girmenize rağmen hata alıyorsanız **'Yetkili Çağır'** butonuna tıklayarak destek alabilirsiniz."
             ),
             color=discord.Color.blue()
         )
