@@ -581,6 +581,26 @@ class RegistrationButton(discord.ui.View):
     async def register_button_callback(self, interaction: discord.Interaction):
         """Kayıt Ol butonuna tıklandığında"""
         try:
+            REQUIRED_VOICE_CHANNEL_ID = 1428811752232976566
+            
+            # Kullanıcının ses kanalında olup olmadığını kontrol et
+            member = interaction.user
+            
+            # Kullanıcı herhangi bir ses kanalında mı?
+            if not member.voice or not member.voice.channel:
+                return await interaction.response.send_message(
+                    "❌ Kayıt olabilmek için önce <#1428811752232976566> ses kanalına katılmalısınız!",
+                    ephemeral=True
+                )
+            
+            # Kullanıcı doğru ses kanalında mı?
+            if member.voice.channel.id != REQUIRED_VOICE_CHANNEL_ID:
+                return await interaction.response.send_message(
+                    "❌ Kayıt olabilmek için <#1428811752232976566> ses kanalında olmalısınız!",
+                    ephemeral=True
+                )
+            
+            # Ses kanalı kontrolü geçtiyse modal'ı aç
             modal = RegistrationModal(self.bot)
             await interaction.response.send_modal(modal)
         except Exception as e:
