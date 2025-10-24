@@ -5,6 +5,20 @@ import aiosqlite
 import re
 from typing import Optional
 
+# ============ GLOBAL AYARLAR ============
+# Rol ID'leri
+UNREGISTERED_ROLE_ID = 1428496119213588521  # Kayıtsız üye rolü
+REGISTERED_ROLE_ID = 1029089740022095973    # Kayıtlı üye rolü
+NITRO_BOOSTER_ROLE_ID = 1030490914411511869  # Nitro Booster rolü (korunur)
+
+# Kanal ID'leri
+LOG_CHANNEL_ID = 1431398643273039934         # Genel log kanalı
+TICKET_LOG_CHANNEL_ID = 1364306112022839436  # Ticket transcript log kanalı
+TICKET_CATEGORY_ID = 1364301691637338132     # Ticket kategorisi
+REQUIRED_VOICE_CHANNEL_ID = 1428811752232976566  # Kayıt için gerekli ses kanalı
+
+# =========================================
+
 # Türkçe karakter normalleştirme
 def normalize_turkish(text: str) -> str:
     """Türkçe karakterleri normalize eder (küçük harf)"""
@@ -76,11 +90,6 @@ class RegistrationModal(discord.ui.Modal, title="Kayıt Formu"):
         # Başarılı kayıt - İşlemleri başlat
         member = interaction.user
         guild = interaction.guild
-        
-        # Rol ID'leri
-        UNREGISTERED_ROLE_ID = 1428496119213588521  # Alınacak rol
-        REGISTERED_ROLE_ID = 1029089740022095973    # Verilecek rol
-        LOG_CHANNEL_ID = 1365956201539571835        # Log kanalı
         
         # Yeni nickname: İsim | Yaş
         new_nickname = f"{name} | {age}"
@@ -161,16 +170,28 @@ class RegistrationModal(discord.ui.Modal, title="Kayıt Formu"):
                 log_channel = guild.get_channel(LOG_CHANNEL_ID)
                 if log_channel:
                     log_embed = discord.Embed(
-                        title="📝 Yeni Kayıt",
-                        color=discord.Color.blue(),
+                        title="✅ Yeni Kayıt",
+                        description=f"{member.mention} başarıyla kayıt oldu!",
+                        color=discord.Color.green(),
                         timestamp=discord.utils.utcnow()
                     )
-                    log_embed.add_field(name="Kullanıcı", value=f"{member.mention} ({member.id})", inline=False)
-                    log_embed.add_field(name="İsim", value=name, inline=True)
-                    log_embed.add_field(name="Yaş", value=str(age), inline=True)
-                    log_embed.add_field(name="Yeni İsim", value=new_nickname, inline=False)
+                    log_embed.add_field(
+                        name="👤 Kullanıcı Bilgileri",
+                        value=f"**Kullanıcı:** {member.mention}\n**ID:** `{member.id}`\n**Tag:** {member}",
+                        inline=False
+                    )
+                    log_embed.add_field(
+                        name="📋 Kayıt Bilgileri",
+                        value=f"**İsim:** {name}\n**Yaş:** {age}\n**Yeni Nickname:** {new_nickname}",
+                        inline=False
+                    )
+                    log_embed.add_field(
+                        name="🎭 Rol Değişiklikleri",
+                        value=f"**Verilen:** <@&{REGISTERED_ROLE_ID}>\n**Alınan:** <@&{UNREGISTERED_ROLE_ID}>",
+                        inline=False
+                    )
                     log_embed.set_thumbnail(url=member.display_avatar.url)
-                    log_embed.set_footer(text=f"Kayıt Sistemi")
+                    log_embed.set_footer(text="HydRaboN Kayıt Sistemi", icon_url=guild.icon.url if guild.icon else None)
                     
                     await log_channel.send(embed=log_embed)
                 else:
@@ -178,7 +199,7 @@ class RegistrationModal(discord.ui.Modal, title="Kayıt Formu"):
             except discord.Forbidden:
                 print(f"[HATA] Log kanalına mesaj gönderme yetkisi yok!")
             except Exception as e:
-                print(f"[HATA] Log kanalına mesaj gönderilirken hata: {e}")
+                print(f"[HATA] Log kanalına mesaj gönderilirken hata: {type(e).__name__}: {e}")
                 
         except Exception as e:
             print(f"[HATA] Beklenmeyen kayıt hatası: {type(e).__name__}: {e}")
@@ -242,8 +263,6 @@ class TicketCloseConfirmView(discord.ui.View):
         """Kapatma onaylandı"""
         await interaction.response.defer()
         
-        LOG_CHANNEL_ID = 1364306112022839436
-        
         try:
             channel = interaction.channel
             guild = interaction.guild
@@ -265,18 +284,27 @@ class TicketCloseConfirmView(discord.ui.View):
             # Transcript'i oluştur
             transcript = "\n".join(messages)
             
-            # Log kanalına gönder
-            log_channel = guild.get_channel(LOG_CHANNEL_ID)
+            # Ticket log kanalına gönder
+            log_channel = guild.get_channel(TICKET_LOG_CHANNEL_ID)
             if log_channel:
                 # Log embed'i
                 log_embed = discord.Embed(
-                    title="🔒 Ticket Kapatıldı",
+                    title="🔒 Destek Ticket'ı Kapatıldı",
+                    description=f"**#{channel.name}** ticket'ı kapatıldı.",
                     color=discord.Color.red(),
                     timestamp=discord.utils.utcnow()
                 )
-                log_embed.add_field(name="Kanal", value=channel.name, inline=True)
-                log_embed.add_field(name="Kapatan", value=interaction.user.mention, inline=True)
-                log_embed.add_field(name="Mesaj Sayısı", value=str(len(messages)), inline=True)
+                log_embed.add_field(
+                    name="📊 Ticket Bilgileri",
+                    value=f"**Kanal:** {channel.name}\n**Kanal ID:** `{channel.id}`\n**Mesaj Sayısı:** {len(messages)}",
+                    inline=False
+                )
+                log_embed.add_field(
+                    name="👤 İşlem Yapan",
+                    value=f"**Yetkili:** {interaction.user.mention}\n**Tag:** {interaction.user}",
+                    inline=False
+                )
+                log_embed.set_footer(text="HydRaboN Ticket Sistemi", icon_url=guild.icon.url if guild.icon else None)
                 
                 # Transcript dosya olarak ekle
                 if transcript:
@@ -289,7 +317,7 @@ class TicketCloseConfirmView(discord.ui.View):
                 else:
                     await log_channel.send(embed=log_embed)
             else:
-                print(f"[HATA] Log kanalı bulunamadı! Kanal ID: {LOG_CHANNEL_ID}")
+                print(f"[HATA] Ticket log kanalı bulunamadı! Kanal ID: {TICKET_LOG_CHANNEL_ID}")
             
             # Kapatılıyor mesajı
             closing_embed = discord.Embed(
@@ -409,8 +437,6 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
         name = self.name_input.value.strip()
         age_str = self.age_input.value.strip()
         
-        TICKET_CATEGORY_ID = 1364301691637338132
-        
         try:
             # Kategoriyi al
             category = interaction.guild.get_channel(TICKET_CATEGORY_ID)
@@ -477,6 +503,33 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
                 f"✅ Destek talebiniz oluşturuldu! {ticket_channel.mention} kanalını kontrol edin.",
                 ephemeral=True
             )
+            
+            # Genel log kanalına bildirim gönder
+            try:
+                log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
+                if log_channel:
+                    log_embed = discord.Embed(
+                        title="🎫 Yeni Destek Ticket'ı Oluşturuldu",
+                        description=f"{interaction.user.mention} yeni bir destek talebi oluşturdu.",
+                        color=discord.Color.blue(),
+                        timestamp=discord.utils.utcnow()
+                    )
+                    log_embed.add_field(
+                        name="👤 Kullanıcı Bilgileri",
+                        value=f"**Kullanıcı:** {interaction.user.mention}\n**ID:** `{interaction.user.id}`\n**Tag:** {interaction.user}",
+                        inline=False
+                    )
+                    log_embed.add_field(
+                        name="📋 Ticket Bilgileri",
+                        value=f"**Kanal:** {ticket_channel.mention}\n**İsim:** {name}\n**Yaş:** {age_str}",
+                        inline=False
+                    )
+                    log_embed.set_thumbnail(url=interaction.user.display_avatar.url)
+                    log_embed.set_footer(text="HydRaboN Destek Sistemi", icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
+                    
+                    await log_channel.send(embed=log_embed)
+            except Exception as e:
+                print(f"[HATA] Genel log kanalına ticket oluşturma mesajı gönderilirken hata: {type(e).__name__}: {e}")
             
         except discord.Forbidden:
             print(f"[HATA] Ticket kanalı oluşturma yetkisi yok!")
@@ -581,8 +634,6 @@ class RegistrationButton(discord.ui.View):
     async def register_button_callback(self, interaction: discord.Interaction):
         """Kayıt Ol butonuna tıklandığında"""
         try:
-            REQUIRED_VOICE_CHANNEL_ID = 1428811752232976566
-            
             # Kullanıcının ses kanalında olup olmadığını kontrol et
             member = interaction.user
             
@@ -717,9 +768,6 @@ class Registration(commands.Cog):
         
         await interaction.response.defer(ephemeral=True)
         
-        UNREGISTERED_ROLE_ID = 1428496119213588521  # Verilecek rol
-        NITRO_BOOSTER_ROLE_ID = 1030490914411511869  # Nitro Booster rolü (kaldırılmayacak)
-        
         try:
             # Kayıtsız rolünü al
             unregistered_role = interaction.guild.get_role(UNREGISTERED_ROLE_ID)
@@ -800,6 +848,33 @@ class Registration(commands.Cog):
             embed.add_field(name="Hedef Kullanıcı", value=kullanici.mention, inline=True)
             
             await interaction.followup.send(embed=embed, ephemeral=True)
+            
+            # Genel log kanalına bildirim gönder
+            try:
+                log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
+                if log_channel:
+                    log_embed = discord.Embed(
+                        title="🔄 Kayıt Sıfırlandı",
+                        description=f"{kullanici.mention} kullanıcısının kaydı sıfırlandı.",
+                        color=discord.Color.orange(),
+                        timestamp=discord.utils.utcnow()
+                    )
+                    log_embed.add_field(
+                        name="👤 Hedef Kullanıcı",
+                        value=f"**Kullanıcı:** {kullanici.mention}\n**ID:** `{kullanici.id}`\n**Tag:** {kullanici}",
+                        inline=False
+                    )
+                    log_embed.add_field(
+                        name="⚙️ İşlem Bilgileri",
+                        value=f"**İşlemi Yapan:** {interaction.user.mention}\n**Kaldırılan Rol Sayısı:** {len(user_roles)}\n**Verilen Rol:** <@&{UNREGISTERED_ROLE_ID}>",
+                        inline=False
+                    )
+                    log_embed.set_thumbnail(url=kullanici.display_avatar.url)
+                    log_embed.set_footer(text="HydRaboN Kayıt Sıfırlama", icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
+                    
+                    await log_channel.send(embed=log_embed)
+            except Exception as e:
+                print(f"[HATA] Genel log kanalına kayıt sıfırlama mesajı gönderilirken hata: {type(e).__name__}: {e}")
             
         except Exception as e:
             print(f"[HATA] Kayıt sıfırlama hatası: {type(e).__name__}: {e}")
