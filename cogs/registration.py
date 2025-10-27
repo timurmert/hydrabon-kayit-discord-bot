@@ -106,129 +106,27 @@ class RegistrationModal(discord.ui.Modal, title="Kayıt Formu"):
                 ephemeral=True
             )
         
-        # İsmi formatla: Her kelimenin baş harfini büyük yap (Türkçe uyumlu)
+        # Bilgiler doğru - Yaş görünürlüğü sorusu göster
+        member = interaction.user
         formatted_name = turkish_title_case(name)
         
-        # Başarılı kayıt - İşlemleri başlat
-        member = interaction.user
-        guild = interaction.guild
+        embed = discord.Embed(
+            title="👁️ Yaş Görünürlüğü Ayarı",
+            description=(
+                f"**Kayıt bilgileriniz doğrulandı!**\n\n"
+                f"**İsim:** {formatted_name}\n"
+                f"**Yaş:** {age}\n\n"
+                "🎭 **Kullanıcı adınızda yaşınız görünsün mü?**\n\n"
+                "• **Yaşımı Göster:** İsminiz `" + f"{formatted_name} | {age}" + "` şeklinde görünür\n"
+                "• **Yaşımı Gizle:** İsminiz sadece `" + f"{formatted_name}" + "` şeklinde görünür\n\n"
+                "💡 *Bu ayarı daha sonra /yas komutuyla değiştirebilirsiniz.*"
+            ),
+            color=discord.Color.blue()
+        )
+        embed.set_footer(text="Lütfen aşağıdaki butonlardan birini seçiniz")
         
-        # Yeni nickname: İsim | Yaş
-        new_nickname = f"{formatted_name} | {age}"
-        
-        try:
-            # Rolleri al
-            unregistered_role = guild.get_role(UNREGISTERED_ROLE_ID)
-            registered_role = guild.get_role(REGISTERED_ROLE_ID)
-            
-            # Rol kontrolü
-            if not registered_role:
-                print(f"[HATA] Kayıtlı rolü bulunamadı! Rol ID: {REGISTERED_ROLE_ID}")
-                return await interaction.followup.send(
-                    "❌ Sistem hatası oluştu. Lütfen yetkililere bildirin.",
-                    ephemeral=True
-                )
-            
-            # Kayıtsız rolünü kaldır
-            try:
-                if unregistered_role and unregistered_role in member.roles:
-                    await member.remove_roles(unregistered_role, reason="Kayıt işlemi")
-            except discord.Forbidden:
-                print(f"[HATA] Kayıtsız rolü kaldırma yetkisi yok! Rol: {unregistered_role.name if unregistered_role else 'Bulunamadı'}")
-            except Exception as e:
-                print(f"[HATA] Kayıtsız rolü kaldırılırken hata: {e}")
-            
-            # Kayıtlı rolünü ver
-            try:
-                await member.add_roles(registered_role, reason="Kayıt işlemi")
-            except discord.Forbidden:
-                print(f"[HATA] Rol verme yetkisi yok! Bot rolü, hedef rolden daha üstte olmalı. Rol: {registered_role.name}")
-                return await interaction.followup.send(
-                    "❌ Sistem hatası oluştu. Lütfen yetkililere bildirin.",
-                    ephemeral=True
-                )
-            except Exception as e:
-                print(f"[HATA] Rol verilirken hata: {e}")
-                return await interaction.followup.send(
-                    "❌ Sistem hatası oluştu. Lütfen yetkililere bildirin.",
-                    ephemeral=True
-                )
-            
-            # İsmi değiştir
-            try:
-                await member.edit(nick=new_nickname, reason="Kayıt işlemi")
-            except discord.Forbidden:
-                print(f"[HATA] İsim değiştirme yetkisi yok! Bot rolü hedef kullanıcıdan daha üstte olmalı.")
-                # İsim değiştirilemese de kayıt devam etsin
-            except Exception as e:
-                print(f"[HATA] İsim değiştirilirken hata: {e}")
-                # İsim değiştirilemese de kayıt devam etsin
-            
-            # Kullanıcıya başarı mesajı gönder
-            embed = discord.Embed(
-                title="✅ Kayıt Başarılı!",
-                description=f"**İsim:** {formatted_name}\n**Yaş:** {age}\n**Yeni İsim:** {new_nickname}",
-                color=discord.Color.green()
-            )
-            embed.set_footer(text=f"Kayıt olan: {member.name}")
-            
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            
-            # İstatistik veritabanına kaydet
-            try:
-                stats_cog = self.bot.get_cog("RegistrationStats")
-                if stats_cog:
-                    await stats_cog.add_registration(
-                        user_id=str(member.id),
-                        username=str(member),
-                        name=formatted_name,
-                        age=age
-                    )
-            except Exception as e:
-                print(f"[HATA] İstatistik veritabanına kaydedilirken hata: {type(e).__name__}: {e}")
-            
-            # Log kanalına bildirim gönder
-            try:
-                log_channel = guild.get_channel(LOG_CHANNEL_ID)
-                if log_channel:
-                    log_embed = discord.Embed(
-                        title="✅ Yeni Kayıt",
-                        description=f"{member.mention} başarıyla kayıt oldu!",
-                        color=discord.Color.green(),
-                        timestamp=discord.utils.utcnow()
-                    )
-                    log_embed.add_field(
-                        name="👤 Kullanıcı Bilgileri",
-                        value=f"**Kullanıcı:** {member.mention}\n**ID:** `{member.id}`\n**Tag:** {member}",
-                        inline=False
-                    )
-                    log_embed.add_field(
-                        name="📋 Kayıt Bilgileri",
-                        value=f"**İsim:** {formatted_name}\n**Yaş:** {age}\n**Yeni Nickname:** {new_nickname}",
-                        inline=False
-                    )
-                    log_embed.add_field(
-                        name="🎭 Rol Değişiklikleri",
-                        value=f"**Verilen:** <@&{REGISTERED_ROLE_ID}>\n**Alınan:** <@&{UNREGISTERED_ROLE_ID}>",
-                        inline=False
-                    )
-                    log_embed.set_thumbnail(url=member.display_avatar.url)
-                    log_embed.set_footer(text="HydRaboN Kayıt Sistemi", icon_url=guild.icon.url if guild.icon else None)
-                    
-                    await log_channel.send(embed=log_embed)
-                else:
-                    print(f"[HATA] Log kanalı bulunamadı! Kanal ID: {LOG_CHANNEL_ID}")
-            except discord.Forbidden:
-                print(f"[HATA] Log kanalına mesaj gönderme yetkisi yok!")
-            except Exception as e:
-                print(f"[HATA] Log kanalına mesaj gönderilirken hata: {type(e).__name__}: {e}")
-                
-        except Exception as e:
-            print(f"[HATA] Beklenmeyen kayıt hatası: {type(e).__name__}: {e}")
-            await interaction.followup.send(
-                "❌ Beklenmeyen bir hata oluştu. Lütfen yetkililere bildirin.",
-                ephemeral=True
-            )
+        view = AgeVisibilityView(self.bot, member, name, age)
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
     
     async def check_name_in_database(self, name: str) -> bool:
         """İsmin veritabanında olup olmadığını kontrol eder"""
@@ -581,6 +479,146 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
             print("[HATA] Kullanıcıya ticket modal hatası mesajı gönderilemedi!")
 
 
+class AgeVisibilityView(discord.ui.View):
+    """Yaş görünürlüğü seçim butonu"""
+    
+    def __init__(self, bot: commands.Bot, member: discord.Member, name: str, age: int):
+        super().__init__(timeout=60)  # 60 saniye timeout
+        self.bot = bot
+        self.member = member
+        self.name = name
+        self.age = age
+        self.show_age = None  # Kullanıcının seçimi
+    
+    @discord.ui.button(label="Yaşımı Göster", style=discord.ButtonStyle.success, emoji="✅")
+    async def show_age_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Yaşı göster butonuna basıldığında"""
+        self.show_age = True
+        await self.complete_registration(interaction)
+    
+    @discord.ui.button(label="Yaşımı Gizle", style=discord.ButtonStyle.secondary, emoji="👁️")
+    async def hide_age_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Yaşı gizle butonuna basıldığında"""
+        self.show_age = False
+        await self.complete_registration(interaction)
+    
+    async def complete_registration(self, interaction: discord.Interaction):
+        """Kayıt işlemini tamamla"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            guild = interaction.guild
+            
+            # İsmi formatla
+            formatted_name = turkish_title_case(self.name)
+            
+            # Nickname'i ayarla (yaş görünürlüğüne göre)
+            if self.show_age:
+                new_nickname = f"{formatted_name} | {self.age}"
+            else:
+                new_nickname = formatted_name
+            
+            # Rolleri al
+            unregistered_role = guild.get_role(UNREGISTERED_ROLE_ID)
+            registered_role = guild.get_role(REGISTERED_ROLE_ID)
+            
+            if not registered_role:
+                print(f"[HATA] Kayıtlı rolü bulunamadı! Rol ID: {REGISTERED_ROLE_ID}")
+                return await interaction.followup.send(
+                    "❌ Sistem hatası oluştu. Lütfen yetkililere bildirin.",
+                    ephemeral=True
+                )
+            
+            # Kayıtsız rolünü kaldır
+            try:
+                if unregistered_role and unregistered_role in self.member.roles:
+                    await self.member.remove_roles(unregistered_role, reason="Kayıt işlemi")
+            except Exception as e:
+                print(f"[HATA] Kayıtsız rolü kaldırılırken hata: {e}")
+            
+            # Kayıtlı rolünü ver
+            try:
+                await self.member.add_roles(registered_role, reason="Kayıt işlemi")
+            except Exception as e:
+                print(f"[HATA] Rol verilirken hata: {e}")
+                return await interaction.followup.send(
+                    "❌ Sistem hatası oluştu. Lütfen yetkililere bildirin.",
+                    ephemeral=True
+                )
+            
+            # İsmi değiştir
+            try:
+                await self.member.edit(nick=new_nickname, reason="Kayıt işlemi")
+            except Exception as e:
+                print(f"[HATA] İsim değiştirilirken hata: {e}")
+            
+            # Kullanıcıya başarı mesajı gönder
+            visibility_status = "Görünür" if self.show_age else "Gizli"
+            embed = discord.Embed(
+                title="✅ Kayıt Başarılı!",
+                description=f"**İsim:** {formatted_name}\n**Yaş:** {self.age}\n**Yaş Durumu:** {visibility_status}\n**Yeni İsim:** {new_nickname}",
+                color=discord.Color.green()
+            )
+            embed.set_footer(text="Yaş görünürlüğünü /yas komutuyla değiştirebilirsiniz.")
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+            # İstatistik veritabanına kaydet
+            try:
+                stats_cog = self.bot.get_cog("RegistrationStats")
+                if stats_cog:
+                    await stats_cog.add_registration(
+                        user_id=str(self.member.id),
+                        username=str(self.member),
+                        name=formatted_name,
+                        age=self.age,
+                        show_age=self.show_age
+                    )
+            except Exception as e:
+                print(f"[HATA] İstatistik veritabanına kaydedilirken hata: {type(e).__name__}: {e}")
+            
+            # Log kanalına bildirim gönder
+            try:
+                log_channel = guild.get_channel(LOG_CHANNEL_ID)
+                if log_channel:
+                    log_embed = discord.Embed(
+                        title="✅ Yeni Kayıt",
+                        description=f"{self.member.mention} başarıyla kayıt oldu!",
+                        color=discord.Color.green(),
+                        timestamp=discord.utils.utcnow()
+                    )
+                    log_embed.add_field(
+                        name="👤 Kullanıcı Bilgileri",
+                        value=f"**Kullanıcı:** {self.member.mention}\n**ID:** `{self.member.id}`\n**Tag:** {self.member}",
+                        inline=False
+                    )
+                    log_embed.add_field(
+                        name="📋 Kayıt Bilgileri",
+                        value=f"**İsim:** {formatted_name}\n**Yaş:** {self.age}\n**Yaş Durumu:** {visibility_status}\n**Yeni Nickname:** {new_nickname}",
+                        inline=False
+                    )
+                    log_embed.add_field(
+                        name="🎭 Rol Değişiklikleri",
+                        value=f"**Verilen:** <@&{REGISTERED_ROLE_ID}>\n**Alınan:** <@&{UNREGISTERED_ROLE_ID}>",
+                        inline=False
+                    )
+                    log_embed.set_thumbnail(url=self.member.display_avatar.url)
+                    log_embed.set_footer(text="HydRaboN Kayıt Sistemi", icon_url=guild.icon.url if guild.icon else None)
+                    
+                    await log_channel.send(embed=log_embed)
+            except Exception as e:
+                print(f"[HATA] Log kanalına mesaj gönderilirken hata: {type(e).__name__}: {e}")
+                
+        except Exception as e:
+            print(f"[HATA] Beklenmeyen kayıt hatası: {type(e).__name__}: {e}")
+            await interaction.followup.send(
+                "❌ Beklenmeyen bir hata oluştu. Lütfen yetkililere bildirin.",
+                ephemeral=True
+            )
+        
+        self.stop()
+
+
 class NewAccountSupportView(discord.ui.View):
     """Yeni hesaplar için yetkili çağırma butonu"""
     
@@ -907,7 +945,7 @@ class Registration(commands.Cog):
                 print(f"[HATA] İsim değiştirilirken hata: {type(e).__name__}: {e}")
                 # İsim değiştirilemese de kayıt devam etsin
             
-            # İstatistik veritabanına kaydet
+            # İstatistik veritabanına kaydet (manuel kayıt - yaş varsayılan olarak görünür)
             try:
                 stats_cog = self.bot.get_cog("RegistrationStats")
                 if stats_cog:
@@ -915,7 +953,8 @@ class Registration(commands.Cog):
                         user_id=str(kullanici.id),
                         username=str(kullanici),
                         name=formatted_name,
-                        age=yas
+                        age=yas,
+                        show_age=True  # Manuel kayıtlarda yaş varsayılan olarak görünür
                     )
             except Exception as e:
                 print(f"[HATA] İstatistik veritabanına kaydedilirken hata: {type(e).__name__}: {e}")
@@ -1104,6 +1143,241 @@ class Registration(commands.Cog):
             
         except Exception as e:
             print(f"[HATA] Kayıt sıfırlama hatası: {type(e).__name__}: {e}")
+            await interaction.followup.send(
+                "❌ Beklenmeyen bir hata oluştu.",
+                ephemeral=True
+            )
+    
+    @app_commands.command(
+        name="kayit-goruntule",
+        description="Belirtilen kullanıcının kayıt bilgilerini görüntüler"
+    )
+    @app_commands.default_permissions(administrator=True)
+    async def view_registration_info(
+        self,
+        interaction: discord.Interaction,
+        kullanici: discord.Member
+    ):
+        """Kullanıcının kayıt bilgilerini görüntüler (isim, yaş, kayıt tarihi vb.)"""
+        
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            stats_cog = self.bot.get_cog("RegistrationStats")
+            if not stats_cog:
+                return await interaction.followup.send(
+                    "❌ İstatistik sistemi bulunamadı!",
+                    ephemeral=True
+                )
+            
+            # Kullanıcı bilgilerini al
+            user_info = await stats_cog.get_user_info(str(kullanici.id))
+            
+            if not user_info:
+                return await interaction.followup.send(
+                    f"❌ {kullanici.mention} için kayıt bilgisi bulunamadı!\n\n"
+                    "Bu kullanıcı henüz kayıt olmamış olabilir veya kayıt verileri silinmiş olabilir.",
+                    ephemeral=True
+                )
+            
+            name, age, registered_at, show_age = user_info
+            
+            # Türkiye saat dilimine çevir
+            import pytz
+            import datetime
+            
+            # registered_at string ise datetime'a çevir
+            if isinstance(registered_at, str):
+                registered_at = datetime.datetime.fromisoformat(registered_at)
+            
+            turkey_tz = pytz.timezone("Europe/Istanbul")
+            if registered_at.tzinfo is None:
+                registered_at = turkey_tz.localize(registered_at)
+            else:
+                registered_at = registered_at.astimezone(turkey_tz)
+            
+            # Hesap yaşı hesapla
+            account_age = discord.utils.utcnow() - kullanici.created_at
+            
+            # Sunucuya katılma süresi
+            join_age = discord.utils.utcnow() - kullanici.joined_at if kullanici.joined_at else None
+            
+            visibility_status = "Görünür ✅" if show_age else "Gizli 👁️"
+            current_nickname = kullanici.display_name
+            
+            embed = discord.Embed(
+                title="📋 Kullanıcı Kayıt Bilgileri",
+                description=f"{kullanici.mention} kullanıcısının detaylı kayıt bilgileri",
+                color=discord.Color.blue(),
+                timestamp=discord.utils.utcnow()
+            )
+            
+            # Discord Hesap Bilgileri
+            account_info = (
+                f"**Kullanıcı:** {kullanici.mention}\n"
+                f"**ID:** `{kullanici.id}`\n"
+                f"**Tag:** {kullanici}\n"
+                f"**Hesap Oluşturma:** {kullanici.created_at.strftime('%d.%m.%Y')}\n"
+                f"**Hesap Yaşı:** {account_age.days} gün"
+            )
+            if join_age:
+                account_info += f"\n**Sunucuya Katılma:** {join_age.days} gün önce"
+            
+            embed.add_field(
+                name="👤 Discord Bilgileri",
+                value=account_info,
+                inline=False
+            )
+            
+            # Kayıt Bilgileri
+            embed.add_field(
+                name="📝 Kayıt Bilgileri",
+                value=(
+                    f"**Kayıtlı İsim:** {name}\n"
+                    f"**Yaş:** {age}\n"
+                    f"**Yaş Görünürlüğü:** {visibility_status}\n"
+                    f"**Mevcut Nickname:** {current_nickname}\n"
+                    f"**Kayıt Tarihi:** {registered_at.strftime('%d.%m.%Y %H:%M')}"
+                ),
+                inline=False
+            )
+            
+            # Rol Bilgileri
+            role_count = len(kullanici.roles) - 1  # @everyone hariç
+            embed.add_field(
+                name="🎭 Rol Bilgisi",
+                value=f"**Toplam Rol Sayısı:** {role_count}",
+                inline=True
+            )
+            
+            embed.set_thumbnail(url=kullanici.display_avatar.url)
+            embed.set_footer(text="HydRaboN Kayıt Bilgileri", icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            print(f"[HATA] Kayıt bilgisi görüntüleme hatası: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            await interaction.followup.send(
+                "❌ Beklenmeyen bir hata oluştu.",
+                ephemeral=True
+            )
+    
+    @app_commands.command(
+        name="yas",
+        description="Kullanıcı adınızda yaşınızın görünürlüğünü ayarlayın"
+    )
+    async def age_settings(
+        self,
+        interaction: discord.Interaction
+    ):
+        """Yaş görünürlüğü ayarlarını değiştir"""
+        
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            stats_cog = self.bot.get_cog("RegistrationStats")
+            if not stats_cog:
+                return await interaction.followup.send(
+                    "❌ İstatistik sistemi bulunamadı!",
+                    ephemeral=True
+                )
+            
+            # Kullanıcı bilgilerini al
+            user_info = await stats_cog.get_user_info(str(interaction.user.id))
+            
+            if not user_info:
+                return await interaction.followup.send(
+                    "❌ Kayıt bilginiz bulunamadı! Önce kayıt olmalısınız.",
+                    ephemeral=True
+                )
+            
+            name, age, registered_at, show_age = user_info
+            current_status = "Görünür ✅" if show_age else "Gizli 👁️"
+            
+            # Yaş görünürlüğü değiştirme view'ı
+            class AgeToggleView(discord.ui.View):
+                def __init__(self, bot, stats_cog, member, name, age, current_show_age):
+                    super().__init__(timeout=60)
+                    self.bot = bot
+                    self.stats_cog = stats_cog
+                    self.member = member
+                    self.name = name
+                    self.age = age
+                    self.current_show_age = current_show_age
+                
+                @discord.ui.button(label="Yaşımı Göster", style=discord.ButtonStyle.success, emoji="✅")
+                async def show_age(self, interaction: discord.Interaction, button: discord.ui.Button):
+                    await self.toggle_age(interaction, True)
+                
+                @discord.ui.button(label="Yaşımı Gizle", style=discord.ButtonStyle.secondary, emoji="👁️")
+                async def hide_age(self, interaction: discord.Interaction, button: discord.ui.Button):
+                    await self.toggle_age(interaction, False)
+                
+                async def toggle_age(self, interaction: discord.Interaction, show_age: bool):
+                    await interaction.response.defer(ephemeral=True)
+                    
+                    try:
+                        # Veritabanını güncelle
+                        success = await self.stats_cog.update_age_visibility(str(self.member.id), show_age)
+                        
+                        if not success:
+                            return await interaction.followup.send(
+                                "❌ Ayar güncellenirken bir hata oluştu!",
+                                ephemeral=True
+                            )
+                        
+                        # Nickname'i güncelle
+                        formatted_name = turkish_title_case(self.name)
+                        if show_age:
+                            new_nickname = f"{formatted_name} | {self.age}"
+                        else:
+                            new_nickname = formatted_name
+                        
+                        try:
+                            await self.member.edit(nick=new_nickname, reason=f"Yaş görünürlüğü değiştirildi")
+                        except Exception as e:
+                            print(f"[HATA] Nickname değiştirilirken hata: {e}")
+                        
+                        visibility_status = "Görünür ✅" if show_age else "Gizli 👁️"
+                        
+                        embed = discord.Embed(
+                            title="✅ Yaş Görünürlüğü Güncellendi!",
+                            description=f"Yaş görünürlüğünüz başarıyla değiştirildi.",
+                            color=discord.Color.green()
+                        )
+                        embed.add_field(name="Yeni Durum", value=visibility_status, inline=True)
+                        embed.add_field(name="Yeni İsim", value=new_nickname, inline=True)
+                        
+                        await interaction.followup.send(embed=embed, ephemeral=True)
+                        self.stop()
+                        
+                    except Exception as e:
+                        print(f"[HATA] Yaş görünürlüğü değiştirme hatası: {e}")
+                        await interaction.followup.send(
+                            "❌ Beklenmeyen bir hata oluştu.",
+                            ephemeral=True
+                        )
+            
+            embed = discord.Embed(
+                title="👁️ Yaş Görünürlüğü Ayarları",
+                description=(
+                    f"**Mevcut Durum:** {current_status}\n\n"
+                    f"**İsim:** {name}\n"
+                    f"**Yaş:** {age}\n\n"
+                    "🎭 **Kullanıcı adınızda yaşınız görünsün mü?**\n\n"
+                    "Aşağıdaki butonlardan birini seçerek yaş görünürlüğünüzü değiştirebilirsiniz."
+                ),
+                color=discord.Color.blue()
+            )
+            embed.set_footer(text="Yaş bilginiz her zaman yöneticiler tarafından görülebilir")
+            
+            view = AgeToggleView(self.bot, stats_cog, interaction.user, name, age, show_age)
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+            
+        except Exception as e:
+            print(f"[HATA] Yaş ayarları hatası: {type(e).__name__}: {e}")
             await interaction.followup.send(
                 "❌ Beklenmeyen bir hata oluştu.",
                 ephemeral=True
