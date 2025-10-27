@@ -25,6 +25,25 @@ def normalize_turkish(text: str) -> str:
     tr_map = str.maketrans("İIĞÜŞÖÇ", "iığüşöç")
     return text.translate(tr_map).lower()
 
+def turkish_title_case(text: str) -> str:
+    """Türkçe karakterlere uygun şekilde her kelimenin baş harfini büyütür"""
+    # Türkçe karakter dönüşüm haritaları
+    lower_map = str.maketrans("İIĞÜŞÖÇ", "iığüşöç")
+    upper_map = str.maketrans("iığüşöç", "İIĞÜŞÖÇ")
+    
+    words = text.split()
+    result_words = []
+    
+    for word in words:
+        if len(word) > 0:
+            # İlk karakteri büyük harfe çevir (Türkçe uyumlu)
+            first_char = word[0].translate(upper_map).upper()
+            # Geri kalan karakterleri küçük harfe çevir (Türkçe uyumlu)
+            rest_chars = word[1:].translate(lower_map).lower()
+            result_words.append(first_char + rest_chars)
+    
+    return " ".join(result_words)
+
 class RegistrationModal(discord.ui.Modal, title="Kayıt Formu"):
     """Kayıt için modal (pop-up) formu"""
     
@@ -87,12 +106,15 @@ class RegistrationModal(discord.ui.Modal, title="Kayıt Formu"):
                 ephemeral=True
             )
         
+        # İsmi formatla: Her kelimenin baş harfini büyük yap (Türkçe uyumlu)
+        formatted_name = turkish_title_case(name)
+        
         # Başarılı kayıt - İşlemleri başlat
         member = interaction.user
         guild = interaction.guild
         
         # Yeni nickname: İsim | Yaş
-        new_nickname = f"{name} | {age}"
+        new_nickname = f"{formatted_name} | {age}"
         
         try:
             # Rolleri al
@@ -145,7 +167,7 @@ class RegistrationModal(discord.ui.Modal, title="Kayıt Formu"):
             # Kullanıcıya başarı mesajı gönder
             embed = discord.Embed(
                 title="✅ Kayıt Başarılı!",
-                description=f"**İsim:** {name}\n**Yaş:** {age}\n**Yeni İsim:** {new_nickname}",
+                description=f"**İsim:** {formatted_name}\n**Yaş:** {age}\n**Yeni İsim:** {new_nickname}",
                 color=discord.Color.green()
             )
             embed.set_footer(text=f"Kayıt olan: {member.name}")
@@ -159,7 +181,7 @@ class RegistrationModal(discord.ui.Modal, title="Kayıt Formu"):
                     await stats_cog.add_registration(
                         user_id=str(member.id),
                         username=str(member),
-                        name=name,
+                        name=formatted_name,
                         age=age
                     )
             except Exception as e:
@@ -182,7 +204,7 @@ class RegistrationModal(discord.ui.Modal, title="Kayıt Formu"):
                     )
                     log_embed.add_field(
                         name="📋 Kayıt Bilgileri",
-                        value=f"**İsim:** {name}\n**Yaş:** {age}\n**Yeni Nickname:** {new_nickname}",
+                        value=f"**İsim:** {formatted_name}\n**Yaş:** {age}\n**Yeni Nickname:** {new_nickname}",
                         inline=False
                     )
                     log_embed.add_field(
@@ -762,7 +784,8 @@ class Registration(commands.Cog):
     async def reset_registration(
         self,
         interaction: discord.Interaction,
-        kullanici: discord.Member
+        kullanici: discord.Member,
+        sebep: str
     ):
         """Kullanıcının kaydını sıfırlar"""
         
@@ -846,6 +869,7 @@ class Registration(commands.Cog):
             )
             embed.add_field(name="İşlem Yapan", value=interaction.user.mention, inline=True)
             embed.add_field(name="Hedef Kullanıcı", value=kullanici.mention, inline=True)
+            embed.add_field(name="Sebep", value=sebep, inline=False)
             
             await interaction.followup.send(embed=embed, ephemeral=True)
             
@@ -866,7 +890,7 @@ class Registration(commands.Cog):
                     )
                     log_embed.add_field(
                         name="⚙️ İşlem Bilgileri",
-                        value=f"**İşlemi Yapan:** {interaction.user.mention}\n**Kaldırılan Rol Sayısı:** {len(user_roles)}\n**Verilen Rol:** <@&{UNREGISTERED_ROLE_ID}>",
+                        value=f"**İşlemi Yapan:** {interaction.user.mention}\n**Kaldırılan Rol Sayısı:** {len(user_roles)}\n**Verilen Rol:** <@&{UNREGISTERED_ROLE_ID}>\n**Sebep:** {sebep}",
                         inline=False
                     )
                     log_embed.set_thumbnail(url=kullanici.display_avatar.url)
