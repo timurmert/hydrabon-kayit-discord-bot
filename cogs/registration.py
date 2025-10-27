@@ -824,6 +824,161 @@ class Registration(commands.Cog):
             )
     
     @app_commands.command(
+        name="kayit",
+        description="Manuel olarak kullanıcı kaydı yapar (Acil durumlar için)"
+    )
+    @app_commands.default_permissions(administrator=True)
+    async def manual_registration(
+        self,
+        interaction: discord.Interaction,
+        kullanici: discord.Member,
+        isim: str,
+        yas: int
+    ):
+        """Manuel kayıt işlemi yapar"""
+        
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            # Yaş kontrolü
+            if yas < 13 or yas > 99:
+                return await interaction.followup.send(
+                    "❌ Yaş 13-99 arasında olmalıdır!",
+                    ephemeral=True
+                )
+            
+            # İsim formatı kontrolü (sadece harf ve boşluk)
+            if not re.match(r'^[a-zA-ZğüşöçıİĞÜŞÖÇ\s]+$', isim):
+                return await interaction.followup.send(
+                    "❌ İsim sadece harflerden oluşmalıdır!",
+                    ephemeral=True
+                )
+            
+            # İsmi formatla: Her kelimenin baş harfini büyük yap (Türkçe uyumlu)
+            formatted_name = turkish_title_case(isim)
+            
+            # Yeni nickname: İsim | Yaş
+            new_nickname = f"{formatted_name} | {yas}"
+            
+            # Rolleri al
+            guild = interaction.guild
+            unregistered_role = guild.get_role(UNREGISTERED_ROLE_ID)
+            registered_role = guild.get_role(REGISTERED_ROLE_ID)
+            
+            if not registered_role:
+                print(f"[HATA] Kayıtlı rolü bulunamadı! Rol ID: {REGISTERED_ROLE_ID}")
+                return await interaction.followup.send(
+                    "❌ Sistem hatası: Kayıtlı rolü bulunamadı!",
+                    ephemeral=True
+                )
+            
+            # Kayıtsız rolünü kaldır
+            try:
+                if unregistered_role and unregistered_role in kullanici.roles:
+                    await kullanici.remove_roles(unregistered_role, reason=f"Manuel kayıt - {interaction.user}")
+            except discord.Forbidden:
+                print(f"[HATA] Rol kaldırma yetkisi yok! Hedef: {kullanici}")
+            except Exception as e:
+                print(f"[HATA] Rol kaldırılırken hata: {type(e).__name__}: {e}")
+            
+            # Kayıtlı rolünü ver
+            try:
+                await kullanici.add_roles(registered_role, reason=f"Manuel kayıt - {interaction.user}")
+            except discord.Forbidden:
+                print(f"[HATA] Rol verme yetkisi yok! Bot rolü, hedef rolden daha üstte olmalı.")
+                return await interaction.followup.send(
+                    "❌ Rol verme yetkim yok! Bot rolü hedef rolden daha üstte olmalı.",
+                    ephemeral=True
+                )
+            except Exception as e:
+                print(f"[HATA] Rol verilirken hata: {type(e).__name__}: {e}")
+                return await interaction.followup.send(
+                    "❌ Rol verilirken bir hata oluştu.",
+                    ephemeral=True
+                )
+            
+            # İsmi değiştir
+            try:
+                await kullanici.edit(nick=new_nickname, reason=f"Manuel kayıt - {interaction.user}")
+            except discord.Forbidden:
+                print(f"[HATA] İsim değiştirme yetkisi yok! Bot rolü hedef kullanıcıdan daha üstte olmalı.")
+                # İsim değiştirilemese de kayıt devam etsin
+            except Exception as e:
+                print(f"[HATA] İsim değiştirilirken hata: {type(e).__name__}: {e}")
+                # İsim değiştirilemese de kayıt devam etsin
+            
+            # İstatistik veritabanına kaydet
+            try:
+                stats_cog = self.bot.get_cog("RegistrationStats")
+                if stats_cog:
+                    await stats_cog.add_registration(
+                        user_id=str(kullanici.id),
+                        username=str(kullanici),
+                        name=formatted_name,
+                        age=yas
+                    )
+            except Exception as e:
+                print(f"[HATA] İstatistik veritabanına kaydedilirken hata: {type(e).__name__}: {e}")
+            
+            # Başarılı mesajı
+            embed = discord.Embed(
+                title="✅ Manuel Kayıt Başarılı!",
+                description=f"{kullanici.mention} kullanıcısı manuel olarak kayıt edildi.",
+                color=discord.Color.green()
+            )
+            embed.add_field(name="İşlem Yapan", value=interaction.user.mention, inline=True)
+            embed.add_field(name="Kayıt Edilen", value=kullanici.mention, inline=True)
+            embed.add_field(name="İsim", value=formatted_name, inline=True)
+            embed.add_field(name="Yaş", value=str(yas), inline=True)
+            embed.add_field(name="Yeni Nickname", value=new_nickname, inline=False)
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+            # Log kanalına bildirim gönder
+            try:
+                log_channel = guild.get_channel(LOG_CHANNEL_ID)
+                if log_channel:
+                    log_embed = discord.Embed(
+                        title="📝 Manuel Kayıt",
+                        description=f"{kullanici.mention} manuel olarak kayıt edildi.",
+                        color=discord.Color.blue(),
+                        timestamp=discord.utils.utcnow()
+                    )
+                    log_embed.add_field(
+                        name="👤 Kayıt Edilen Kullanıcı",
+                        value=f"**Kullanıcı:** {kullanici.mention}\n**ID:** `{kullanici.id}`\n**Tag:** {kullanici}",
+                        inline=False
+                    )
+                    log_embed.add_field(
+                        name="📋 Kayıt Bilgileri",
+                        value=f"**İsim:** {formatted_name}\n**Yaş:** {yas}\n**Yeni Nickname:** {new_nickname}",
+                        inline=False
+                    )
+                    log_embed.add_field(
+                        name="🎭 Rol Değişiklikleri",
+                        value=f"**Verilen:** <@&{REGISTERED_ROLE_ID}>\n**Alınan:** <@&{UNREGISTERED_ROLE_ID}>",
+                        inline=False
+                    )
+                    log_embed.add_field(
+                        name="⚙️ İşlem Bilgileri",
+                        value=f"**İşlemi Yapan:** {interaction.user.mention}\n**İşlem Türü:** Manuel Kayıt\n**Komut:** `/kayit`",
+                        inline=False
+                    )
+                    log_embed.set_thumbnail(url=kullanici.display_avatar.url)
+                    log_embed.set_footer(text="HydRaboN Manuel Kayıt Sistemi", icon_url=guild.icon.url if guild.icon else None)
+                    
+                    await log_channel.send(embed=log_embed)
+            except Exception as e:
+                print(f"[HATA] Log kanalına manuel kayıt mesajı gönderilirken hata: {type(e).__name__}: {e}")
+            
+        except Exception as e:
+            print(f"[HATA] Manuel kayıt hatası: {type(e).__name__}: {e}")
+            await interaction.followup.send(
+                "❌ Beklenmeyen bir hata oluştu.",
+                ephemeral=True
+            )
+    
+    @app_commands.command(
         name="kayit_sifirla",
         description="Seçilen kullanıcının kaydını sıfırlar"
     )
