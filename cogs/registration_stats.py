@@ -103,6 +103,22 @@ class RegistrationStats(commands.Cog):
             print(f"[HATA] Yaş görünürlüğü güncellenirken hata: {type(e).__name__}: {e}")
             return False
     
+    async def update_user_age(self, user_id: str, new_age: int):
+        """Kullanıcının yaşını güncelle (Yaş sıfırlama için)"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute("""
+                    UPDATE registrations
+                    SET age = ?
+                    WHERE user_id = ?
+                    AND id = (SELECT id FROM registrations WHERE user_id = ? ORDER BY registered_at DESC LIMIT 1)
+                """, (new_age, user_id, user_id))
+                await db.commit()
+                return True
+        except Exception as e:
+            print(f"[HATA] Yaş güncellenirken hata: {type(e).__name__}: {e}")
+            return False
+    
     @tasks.loop(hours=24)
     async def cleanup_old_records(self):
         """2 haftadan eski kayıtları sil"""

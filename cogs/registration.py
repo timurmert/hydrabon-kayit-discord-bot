@@ -479,6 +479,333 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
             print("[HATA] Kullanıcıya ticket modal hatası mesajı gönderilemedi!")
 
 
+class AgeResetTicketControlView(discord.ui.View):
+    """Yaş sıfırlama ticket kontrol butonları (Onay/Ret)"""
+    
+    def __init__(self, bot: commands.Bot, user_id: int, current_name: str, current_age: int, requested_age: str):
+        super().__init__(timeout=None)  # Kalıcı buton
+        self.bot = bot
+        self.user_id = user_id
+        self.current_name = current_name
+        self.current_age = current_age
+        self.requested_age = requested_age
+    
+    @discord.ui.button(
+        label="Onayla",
+        style=discord.ButtonStyle.success,
+        emoji="✅",
+        custom_id="age_reset_approve"
+    )
+    async def approve_reset(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Yaş sıfırlama talebini onayla"""
+        # Yönetici kontrolü
+        if not interaction.user.guild_permissions.administrator:
+            return await interaction.response.send_message(
+                "❌ Bu işlem için yönetici yetkisi gereklidir!",
+                ephemeral=True
+            )
+        
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            guild = interaction.guild
+            member = guild.get_member(self.user_id)
+            
+            if not member:
+                return await interaction.followup.send(
+                    "❌ Kullanıcı sunucuda bulunamadı!",
+                    ephemeral=True
+                )
+            
+            # Yeni yaş bilgisi var mı kontrol et
+            if self.requested_age and self.requested_age.strip():
+                try:
+                    new_age = int(self.requested_age.strip())
+                    if new_age < 13 or new_age > 99:
+                        return await interaction.followup.send(
+                            "❌ Talep edilen yaş geçerli değil (13-99 arası olmalı)!",
+                            ephemeral=True
+                        )
+                except ValueError:
+                    return await interaction.followup.send(
+                        "❌ Talep edilen yaş geçerli bir sayı değil!",
+                        ephemeral=True
+                    )
+            else:
+                # Yaş belirtilmemişse yetkili kendisi girmeli
+                return await interaction.followup.send(
+                    "❌ Yeni yaş bilgisi belirtilmemiş! Lütfen kullanıcıya doğru yaşı sorup `/kayit` komutuyla manuel olarak güncelleyin.",
+                    ephemeral=True
+                )
+            
+            # Veritabanını güncelle
+            stats_cog = self.bot.get_cog("RegistrationStats")
+            if not stats_cog:
+                return await interaction.followup.send(
+                    "❌ İstatistik sistemi bulunamadı!",
+                    ephemeral=True
+                )
+            
+            # Kullanıcı bilgilerini al
+            user_info = await stats_cog.get_user_info(str(self.user_id))
+            if not user_info:
+                return await interaction.followup.send(
+                    "❌ Kullanıcının kayıt bilgisi bulunamadı!",
+                    ephemeral=True
+                )
+            
+            name, old_age, registered_at, show_age = user_info
+            
+            # Yaşı güncelle - veritabanında
+            success = await stats_cog.update_user_age(str(self.user_id), new_age)
+            
+            if not success:
+                return await interaction.followup.send(
+                    "❌ Veritabanı güncellenirken hata oluştu!",
+                    ephemeral=True
+                )
+            
+            # Nickname'i güncelle
+            formatted_name = turkish_title_case(name)
+            if show_age:
+                new_nickname = f"{formatted_name} | {new_age}"
+            else:
+                new_nickname = formatted_name
+            
+            try:
+                await member.edit(nick=new_nickname, reason=f"Yaş sıfırlama onayı - {interaction.user}")
+            except Exception as e:
+                print(f"[HATA] Nickname güncellenirken hata: {e}")
+            
+            # Kullanıcıya DM gönder
+            try:
+                dm_embed = discord.Embed(
+                    title="✅ Yaş Sıfırlama Talebiniz Onaylandı",
+                    description=(
+                        f"Yaş sıfırlama talebiniz yetkili tarafından onaylandı.\n\n"
+                        f"**Eski Yaş:** {self.current_age}\n"
+                        f"**Yeni Yaş:** {new_age}\n"
+                        f"**Onaylayan Yetkili:** {interaction.user.mention}\n\n"
+                        f"Yaşınız başarıyla güncellendi."
+                    ),
+                    color=discord.Color.green(),
+                    timestamp=discord.utils.utcnow()
+                )
+                dm_embed.set_footer(text="HydRaboN Yaş Sıfırlama Sistemi")
+                await member.send(embed=dm_embed)
+            except:
+                print(f"[UYARI] Kullanıcıya DM gönderilemedi: {member}")
+            
+            # Ticket kanalına onay mesajı gönder
+            channel_embed = discord.Embed(
+                title="✅ Yaş Sıfırlama Talebi Onaylandı",
+                description=(
+                    f"**Onaylayan Yetkili:** {interaction.user.mention}\n"
+                    f"**Kullanıcı:** <@{self.user_id}>\n\n"
+                    f"**Eski Yaş:** {self.current_age}\n"
+                    f"**Yeni Yaş:** {new_age}\n\n"
+                    "Kullanıcının yaşı başarıyla güncellendi.\n"
+                    "Bu ticket 10 saniye içinde otomatik olarak kapatılacaktır."
+                ),
+                color=discord.Color.green(),
+                timestamp=discord.utils.utcnow()
+            )
+            await interaction.channel.send(embed=channel_embed)
+            
+            # Log kanalına bildirim
+            try:
+                log_channel = guild.get_channel(LOG_CHANNEL_ID)
+                if log_channel:
+                    log_embed = discord.Embed(
+                        title="✅ Yaş Sıfırlama Talebi Onaylandı",
+                        description=f"<@{self.user_id}> kullanıcısının yaş sıfırlama talebi onaylandı.",
+                        color=discord.Color.green(),
+                        timestamp=discord.utils.utcnow()
+                    )
+                    log_embed.add_field(
+                        name="👤 Kullanıcı",
+                        value=f"**ID:** `{self.user_id}`\n**İsim:** {name}",
+                        inline=False
+                    )
+                    log_embed.add_field(
+                        name="🔄 Yaş Değişikliği",
+                        value=f"**Eski Yaş:** {self.current_age}\n**Yeni Yaş:** {new_age}",
+                        inline=True
+                    )
+                    log_embed.add_field(
+                        name="👮 Onaylayan",
+                        value=f"{interaction.user.mention}\n**Tag:** {interaction.user}",
+                        inline=True
+                    )
+                    log_embed.set_footer(text="HydRaboN Yaş Sıfırlama Sistemi")
+                    await log_channel.send(embed=log_embed)
+            except Exception as e:
+                print(f"[HATA] Log kanalına mesaj gönderilirken hata: {e}")
+            
+            await interaction.followup.send(
+                "✅ Yaş sıfırlama talebi onaylandı ve kullanıcının yaşı güncellendi!",
+                ephemeral=True
+            )
+            
+            # Butonları devre dışı bırak
+            for item in self.children:
+                item.disabled = True
+            await interaction.message.edit(view=self)
+            
+            # 10 saniye sonra ticket'ı kapat
+            import asyncio
+            await asyncio.sleep(10)
+            try:
+                await interaction.channel.delete(reason=f"Yaş sıfırlama onaylandı - {interaction.user}")
+            except:
+                print("[HATA] Ticket kanalı silinemedi!")
+            
+        except Exception as e:
+            print(f"[HATA] Yaş sıfırlama onaylanırken hata: {type(e).__name__}: {e}")
+            await interaction.followup.send(
+                "❌ Yaş güncellenirken bir hata oluştu!",
+                ephemeral=True
+            )
+    
+    @discord.ui.button(
+        label="Reddet",
+        style=discord.ButtonStyle.danger,
+        emoji="❌",
+        custom_id="age_reset_reject"
+    )
+    async def reject_reset(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Yaş sıfırlama talebini reddet"""
+        # Yönetici kontrolü
+        if not interaction.user.guild_permissions.administrator:
+            return await interaction.response.send_message(
+                "❌ Bu işlem için yönetici yetkisi gereklidir!",
+                ephemeral=True
+            )
+        
+        # Red sebebi modal'ı
+        class RejectReasonModal(discord.ui.Modal, title="Red Sebebi"):
+            reason_input = discord.ui.TextInput(
+                label="Red Sebebi",
+                placeholder="Neden reddedildiğini açıklayın",
+                min_length=5,
+                max_length=500,
+                required=True,
+                style=discord.TextStyle.paragraph
+            )
+            
+            def __init__(self, parent_view):
+                super().__init__()
+                self.parent_view = parent_view
+            
+            async def on_submit(self, modal_interaction: discord.Interaction):
+                await modal_interaction.response.defer(ephemeral=True)
+                
+                reason = self.reason_input.value.strip()
+                
+                try:
+                    guild = modal_interaction.guild
+                    member = guild.get_member(self.parent_view.user_id)
+                    
+                    # Kullanıcıya DM gönder
+                    if member:
+                        try:
+                            dm_embed = discord.Embed(
+                                title="❌ Yaş Sıfırlama Talebiniz Reddedildi",
+                                description=(
+                                    f"Yaş sıfırlama talebiniz yetkili tarafından reddedildi.\n\n"
+                                    f"**Red Sebebi:**\n{reason}\n\n"
+                                    f"**Reddeden Yetkili:** {modal_interaction.user.mention}\n\n"
+                                    "Daha fazla bilgi için yetkililere ulaşabilirsiniz."
+                                ),
+                                color=discord.Color.red(),
+                                timestamp=discord.utils.utcnow()
+                            )
+                            dm_embed.set_footer(text="HydRaboN Yaş Sıfırlama Sistemi")
+                            await member.send(embed=dm_embed)
+                        except:
+                            print(f"[UYARI] Kullanıcıya DM gönderilemedi: {member}")
+                    
+                    # Ticket kanalına red mesajı gönder
+                    channel_embed = discord.Embed(
+                        title="❌ Yaş Sıfırlama Talebi Reddedildi",
+                        description=(
+                            f"**Reddeden Yetkili:** {modal_interaction.user.mention}\n"
+                            f"**Kullanıcı:** <@{self.parent_view.user_id}>\n\n"
+                            f"**Red Sebebi:**\n{reason}\n\n"
+                            "Bu ticket 10 saniye içinde otomatik olarak kapatılacaktır."
+                        ),
+                        color=discord.Color.red(),
+                        timestamp=discord.utils.utcnow()
+                    )
+                    await modal_interaction.channel.send(embed=channel_embed)
+                    
+                    # Log kanalına bildirim
+                    try:
+                        log_channel = guild.get_channel(LOG_CHANNEL_ID)
+                        if log_channel:
+                            log_embed = discord.Embed(
+                                title="❌ Yaş Sıfırlama Talebi Reddedildi",
+                                description=f"<@{self.parent_view.user_id}> kullanıcısının yaş sıfırlama talebi reddedildi.",
+                                color=discord.Color.red(),
+                                timestamp=discord.utils.utcnow()
+                            )
+                            log_embed.add_field(
+                                name="👤 Kullanıcı",
+                                value=f"**ID:** `{self.parent_view.user_id}`",
+                                inline=False
+                            )
+                            log_embed.add_field(
+                                name="📋 Red Sebebi",
+                                value=reason,
+                                inline=False
+                            )
+                            log_embed.add_field(
+                                name="👮 Reddeden",
+                                value=f"{modal_interaction.user.mention}\n**Tag:** {modal_interaction.user}",
+                                inline=False
+                            )
+                            log_embed.set_footer(text="HydRaboN Yaş Sıfırlama Sistemi")
+                            await log_channel.send(embed=log_embed)
+                    except Exception as e:
+                        print(f"[HATA] Log kanalına mesaj gönderilirken hata: {e}")
+                    
+                    await modal_interaction.followup.send(
+                        "✅ Yaş sıfırlama talebi reddedildi ve kullanıcıya bildirim gönderildi!",
+                        ephemeral=True
+                    )
+                    
+                    # Butonları devre dışı bırak
+                    for item in self.parent_view.children:
+                        item.disabled = True
+                    await modal_interaction.message.edit(view=self.parent_view)
+                    
+                    # 10 saniye sonra ticket'ı kapat
+                    import asyncio
+                    await asyncio.sleep(10)
+                    try:
+                        await modal_interaction.channel.delete(reason=f"Yaş sıfırlama reddedildi - {modal_interaction.user}")
+                    except:
+                        print("[HATA] Ticket kanalı silinemedi!")
+                    
+                except Exception as e:
+                    print(f"[HATA] Yaş sıfırlama reddedilirken hata: {type(e).__name__}: {e}")
+                    await modal_interaction.followup.send(
+                        "❌ İşlem sırasında bir hata oluştu!",
+                        ephemeral=True
+                    )
+        
+        # Modal'ı göster
+        try:
+            modal = RejectReasonModal(self)
+            await interaction.response.send_modal(modal)
+        except Exception as e:
+            print(f"[HATA] Red modal açılırken hata: {e}")
+            await interaction.response.send_message(
+                "❌ Form açılırken bir hata oluştu!",
+                ephemeral=True
+            )
+
+
 class AgeResetTicketModal(discord.ui.Modal, title="Yaş Sıfırlama Talebi"):
     """Yaş sıfırlama için ticket modal"""
     
@@ -568,8 +895,14 @@ class AgeResetTicketModal(discord.ui.Modal, title="Yaş Sıfırlama Talebi"):
             embed.set_footer(text="Yaş Sıfırlama Sistemi")
             embed.timestamp = discord.utils.utcnow()
             
-            # Ticket kontrol view'ı ile gönder
-            view = TicketControlView()
+            # Yaş sıfırlama özel kontrol view'ı ile gönder (Onay/Ret butonları)
+            view = AgeResetTicketControlView(
+                bot=self.bot,
+                user_id=interaction.user.id,
+                current_name=self.current_name,
+                current_age=self.current_age,
+                requested_age=new_age
+            )
             await ticket_channel.send(
                 content=f"{interaction.user.mention}",
                 embed=embed,
