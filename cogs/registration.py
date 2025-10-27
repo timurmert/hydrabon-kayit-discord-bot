@@ -1609,6 +1609,35 @@ class Registration(commands.Cog):
                 @discord.ui.button(label="Yaşımı Gizle", style=discord.ButtonStyle.secondary, emoji="👁️", row=0)
                 async def hide_age(self, interaction: discord.Interaction, button: discord.ui.Button):
                     await self.toggle_age(interaction, False)
+
+                @discord.ui.button(label="Yaşımı Sıfırla", style=discord.ButtonStyle.danger, emoji="🔄", row=0)
+                async def reset_age(self, interaction: discord.Interaction, button: discord.ui.Button):
+                    """Yaş sıfırlama onay sorusu göster"""
+                    try:
+                        embed = discord.Embed(
+                            title="⚠️ Yaş Sıfırlama Onayı",
+                            description=(
+                                "**Yaşınızı sıfırlamak için yetkili desteği gereklidir.**\n\n"
+                                "Bu işlem için bir destek ticket'ı açılacaktır. Ticket'ta:\n"
+                                "• Yaşınızı neden sıfırlamak istediğinizi belirtmeniz\n"
+                                "• Doğru yaşınızı (biliyorsanız) girmeniz\n"
+                                "gerekecektir.\n\n"
+                                "Yetkililerin onayı sonrasında yaşınız güncellenecektir.\n\n"
+                                "**Devam etmek istiyor musunuz?**"
+                            ),
+                            color=discord.Color.orange()
+                        )
+                        embed.set_footer(text="Ticket açılması durumunda yetkililere bildirim gönderilecektir")
+                        
+                        confirm_view = AgeResetConfirmView(self.bot, self.name, self.age)
+                        await interaction.response.send_message(embed=embed, view=confirm_view, ephemeral=True)
+                        
+                    except Exception as e:
+                        print(f"[HATA] Yaş sıfırlama onay mesajı gösterilirken hata: {e}")
+                        await interaction.response.send_message(
+                            "❌ Bir hata oluştu. Lütfen tekrar deneyiniz.",
+                            ephemeral=True
+                        )
                 
                 @discord.ui.button(label="Rolleri Düzenle", style=discord.ButtonStyle.primary, emoji="🎭", row=1)
                 async def manage_roles(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -1637,35 +1666,6 @@ class Registration(commands.Cog):
                         print(f"[HATA] Rol yönetim menüsü açılırken hata: {e}")
                         await interaction.response.send_message(
                             "❌ Rol yönetim menüsü açılırken bir hata oluştu!",
-                            ephemeral=True
-                        )
-                
-                @discord.ui.button(label="Yaşımı Sıfırla", style=discord.ButtonStyle.danger, emoji="🔄", row=1)
-                async def reset_age(self, interaction: discord.Interaction, button: discord.ui.Button):
-                    """Yaş sıfırlama onay sorusu göster"""
-                    try:
-                        embed = discord.Embed(
-                            title="⚠️ Yaş Sıfırlama Onayı",
-                            description=(
-                                "**Yaşınızı sıfırlamak için yetkili desteği gereklidir.**\n\n"
-                                "Bu işlem için bir destek ticket'ı açılacaktır. Ticket'ta:\n"
-                                "• Yaşınızı neden sıfırlamak istediğinizi belirtmeniz\n"
-                                "• Doğru yaşınızı (biliyorsanız) girmeniz\n"
-                                "gerekecektir.\n\n"
-                                "Yetkililerin onayı sonrasında yaşınız güncellenecektir.\n\n"
-                                "**Devam etmek istiyor musunuz?**"
-                            ),
-                            color=discord.Color.orange()
-                        )
-                        embed.set_footer(text="Ticket açılması durumunda yetkililere bildirim gönderilecektir")
-                        
-                        confirm_view = AgeResetConfirmView(self.bot, self.name, self.age)
-                        await interaction.response.send_message(embed=embed, view=confirm_view, ephemeral=True)
-                        
-                    except Exception as e:
-                        print(f"[HATA] Yaş sıfırlama onay mesajı gösterilirken hata: {e}")
-                        await interaction.response.send_message(
-                            "❌ Bir hata oluştu. Lütfen tekrar deneyiniz.",
                             ephemeral=True
                         )
                 
