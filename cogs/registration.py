@@ -581,6 +581,30 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
             print("[HATA] Kullanıcıya ticket modal hatası mesajı gönderilemedi!")
 
 
+class NewAccountSupportView(discord.ui.View):
+    """Yeni hesaplar için yetkili çağırma butonu"""
+    
+    def __init__(self, bot: commands.Bot):
+        super().__init__(timeout=60)  # 60 saniye timeout
+        self.bot = bot
+    
+    @discord.ui.button(label="Yetkili Çağır", style=discord.ButtonStyle.danger, emoji="⚠️")
+    async def support_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Yetkili çağır butonuna basıldığında modal aç"""
+        try:
+            modal = SupportTicketModal(self.bot)
+            await interaction.response.send_modal(modal)
+        except Exception as e:
+            print(f"[HATA] Destek modal açılırken hata: {type(e).__name__}: {e}")
+            try:
+                await interaction.response.send_message(
+                    "❌ Form açılırken bir hata oluştu. Lütfen tekrar deneyiniz.",
+                    ephemeral=True
+                )
+            except:
+                print("[HATA] Kullanıcıya destek modal hatası mesajı gönderilemedi!")
+
+
 class SupportConfirmView(discord.ui.View):
     """Yetkili çağırma onay butonu"""
     
@@ -656,9 +680,9 @@ class RegistrationButton(discord.ui.View):
     async def register_button_callback(self, interaction: discord.Interaction):
         """Kayıt Ol butonuna tıklandığında"""
         try:
-            # Kullanıcının ses kanalında olup olmadığını kontrol et
             member = interaction.user
             
+            # Kullanıcının ses kanalında olup olmadığını kontrol et
             # Kullanıcı herhangi bir ses kanalında mı?
             if not member.voice or not member.voice.channel:
                 return await interaction.response.send_message(
@@ -673,7 +697,30 @@ class RegistrationButton(discord.ui.View):
                     ephemeral=True
                 )
             
-            # Ses kanalı kontrolü geçtiyse modal'ı aç
+            # Ses kanalı kontrolü geçtikten sonra hesap yaşı kontrolü (14 gün)
+            account_age = discord.utils.utcnow() - member.created_at
+            if account_age.days < 14:
+                # Hesap 14 günden yeni - Manuel kayıt için ticket açmaya yönlendir
+                embed = discord.Embed(
+                    title="⏰ Hesap Yaşı Yetersiz",
+                    description=(
+                        "❌ **Otomatik kayıt olamazsınız!**\n\n"
+                        f"Discord hesabınız **{account_age.days} gün** önce oluşturulmuş.\n"
+                        f"Otomatik kayıt olabilmek için hesabınızın en az **14 gün** eski olması gerekmektedir.\n\n"
+                        f"⏳ **Kalan Süre:** {14 - account_age.days} gün\n\n"
+                        "🎫 **Manuel Kayıt İçin:**\n"
+                        "Eğer özel bir durumunuz varsa veya manuel kayıt olmak istiyorsanız, "
+                        "aşağıdaki **Yetkili Çağır** butonuna tıklayarak destek talebi oluşturabilirsiniz. "
+                        "Yetkili ekibimiz sizinle ilgilenecektir."
+                    ),
+                    color=discord.Color.red()
+                )
+                embed.set_footer(text=f"Hesap Oluşturulma: {member.created_at.strftime('%d.%m.%Y')}")
+                
+                view = NewAccountSupportView(self.bot)
+                return await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+            
+            # Tüm kontroller geçti - Kayıt modal'ını aç
             modal = RegistrationModal(self.bot)
             await interaction.response.send_modal(modal)
         except Exception as e:
