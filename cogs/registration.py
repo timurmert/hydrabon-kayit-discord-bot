@@ -594,7 +594,7 @@ class AgeResetTicketControlView(discord.ui.View):
                 dm_embed.set_footer(text="HydRaboN Yaş Sıfırlama Sistemi")
                 await member.send(embed=dm_embed)
             except:
-                print(f"[UYARI] Kullanıcıya DM gönderilemedi: {member}")
+                pass
             
             # Ticket kanalına onay mesajı gönder
             channel_embed = discord.Embed(
@@ -723,7 +723,7 @@ class AgeResetTicketControlView(discord.ui.View):
                             dm_embed.set_footer(text="HydRaboN Yaş Sıfırlama Sistemi")
                             await member.send(embed=dm_embed)
                         except:
-                            print(f"[UYARI] Kullanıcıya DM gönderilemedi: {member}")
+                            pass
                     
                     # Ticket kanalına red mesajı gönder
                     channel_embed = discord.Embed(
