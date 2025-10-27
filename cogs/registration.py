@@ -119,7 +119,7 @@ class RegistrationModal(discord.ui.Modal, title="Kayıt Formu"):
                 "🎭 **Kullanıcı adınızda yaşınız görünsün mü?**\n\n"
                 "• **Yaşımı Göster:** İsminiz `" + f"{formatted_name} | {age}" + "` şeklinde görünür\n"
                 "• **Yaşımı Gizle:** İsminiz sadece `" + f"{formatted_name}" + "` şeklinde görünür\n\n"
-                "💡 *Bu ayarı daha sonra /yas komutuyla değiştirebilirsiniz.*"
+                "💡 *Bu ayarı daha sonra /kayit-ayarlari komutuyla değiştirebilirsiniz.*"
             ),
             color=discord.Color.blue()
         )
@@ -479,6 +479,199 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
             print("[HATA] Kullanıcıya ticket modal hatası mesajı gönderilemedi!")
 
 
+class AgeResetTicketModal(discord.ui.Modal, title="Yaş Sıfırlama Talebi"):
+    """Yaş sıfırlama için ticket modal"""
+    
+    reason_input = discord.ui.TextInput(
+        label="Sebep",
+        placeholder="Yaşınızı neden sıfırlamak istiyorsunuz?",
+        min_length=10,
+        max_length=500,
+        required=True,
+        style=discord.TextStyle.paragraph
+    )
+    
+    new_age_input = discord.ui.TextInput(
+        label="Yeni Yaş (Opsiyonel)",
+        placeholder="Eğer biliyorsanız doğru yaşınızı giriniz",
+        min_length=0,
+        max_length=2,
+        required=False,
+        style=discord.TextStyle.short
+    )
+    
+    def __init__(self, bot: commands.Bot, current_name: str, current_age: int):
+        super().__init__()
+        self.bot = bot
+        self.current_name = current_name
+        self.current_age = current_age
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        """Modal submit edildiğinde ticket oluştur"""
+        await interaction.response.defer(ephemeral=True)
+        
+        reason = self.reason_input.value.strip()
+        new_age = self.new_age_input.value.strip()
+        
+        try:
+            # Kategoriyi al
+            category = interaction.guild.get_channel(TICKET_CATEGORY_ID)
+            
+            if not category or not isinstance(category, discord.CategoryChannel):
+                print(f"[HATA] Ticket kategorisi bulunamadı! Kategori ID: {TICKET_CATEGORY_ID}")
+                return await interaction.followup.send(
+                    "❌ Sistem hatası: Ticket kategorisi bulunamadı. Lütfen yetkililere bildirin.",
+                    ephemeral=True
+                )
+            
+            # Ticket kanalı adı
+            ticket_name = f"yaş-sıfırlama-{interaction.user.name}-{interaction.user.discriminator}"
+            
+            # Sadece kullanıcı ve yöneticiler görebilsin
+            overwrites = {
+                interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                interaction.user: discord.PermissionOverwrite(
+                    read_messages=True,
+                    send_messages=True,
+                    attach_files=True,
+                    embed_links=True
+                ),
+                interaction.guild.me: discord.PermissionOverwrite(
+                    read_messages=True,
+                    send_messages=True,
+                    manage_channels=True
+                )
+            }
+            
+            # Ticket kanalı oluştur
+            ticket_channel = await category.create_text_channel(
+                name=ticket_name,
+                overwrites=overwrites,
+                reason=f"Yaş sıfırlama talebi - {interaction.user}"
+            )
+            
+            # Ticket bilgi embed'i
+            embed = discord.Embed(
+                title="🔄 Yaş Sıfırlama Talebi",
+                description=(
+                    f"**Kullanıcı:** {interaction.user.mention}\n"
+                    f"**Kullanıcı ID:** {interaction.user.id}\n\n"
+                    f"**Mevcut İsim:** {self.current_name}\n"
+                    f"**Mevcut Yaş:** {self.current_age}\n"
+                    f"**Talep Edilen Yeni Yaş:** {new_age if new_age else 'Belirtilmedi'}\n\n"
+                    f"**Sebep:**\n{reason}\n\n"
+                    "Yetkililere bildirim gönderildi. Lütfen bekleyin."
+                ),
+                color=discord.Color.orange()
+            )
+            embed.set_thumbnail(url=interaction.user.display_avatar.url)
+            embed.set_footer(text="Yaş Sıfırlama Sistemi")
+            embed.timestamp = discord.utils.utcnow()
+            
+            # Ticket kontrol view'ı ile gönder
+            view = TicketControlView()
+            await ticket_channel.send(
+                content=f"{interaction.user.mention}",
+                embed=embed,
+                view=view
+            )
+            
+            # Kullanıcıya başarı mesajı
+            await interaction.followup.send(
+                f"✅ Yaş sıfırlama talebiniz oluşturuldu! {ticket_channel.mention} kanalını kontrol edin.",
+                ephemeral=True
+            )
+            
+            # Genel log kanalına bildirim gönder
+            try:
+                log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
+                if log_channel:
+                    log_embed = discord.Embed(
+                        title="🔄 Yeni Yaş Sıfırlama Ticket'ı Oluşturuldu",
+                        description=f"{interaction.user.mention} yaş sıfırlama talebi oluşturdu.",
+                        color=discord.Color.blue(),
+                        timestamp=discord.utils.utcnow()
+                    )
+                    log_embed.add_field(
+                        name="👤 Kullanıcı Bilgileri",
+                        value=f"**Kullanıcı:** {interaction.user.mention}\n**ID:** `{interaction.user.id}`\n**Tag:** {interaction.user}",
+                        inline=False
+                    )
+                    log_embed.add_field(
+                        name="📋 Ticket Bilgileri",
+                        value=f"**Kanal:** {ticket_channel.mention}\n**Mevcut Yaş:** {self.current_age}\n**Talep Edilen Yaş:** {new_age if new_age else 'Belirtilmedi'}",
+                        inline=False
+                    )
+                    log_embed.set_thumbnail(url=interaction.user.display_avatar.url)
+                    log_embed.set_footer(text="HydRaboN Yaş Sıfırlama Sistemi", icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
+                    
+                    await log_channel.send(embed=log_embed)
+            except Exception as e:
+                print(f"[HATA] Genel log kanalına yaş sıfırlama ticket mesajı gönderilirken hata: {type(e).__name__}: {e}")
+            
+        except discord.Forbidden:
+            print(f"[HATA] Ticket kanalı oluşturma yetkisi yok!")
+            await interaction.followup.send(
+                "❌ Ticket kanalı oluşturma yetkim yok. Lütfen yetkililere bildirin.",
+                ephemeral=True
+            )
+        except Exception as e:
+            print(f"[HATA] Yaş sıfırlama ticket'ı oluşturulurken hata: {type(e).__name__}: {e}")
+            await interaction.followup.send(
+                "❌ Ticket oluşturulurken bir hata oluştu. Lütfen yetkililere bildirin.",
+                ephemeral=True
+            )
+    
+    async def on_error(self, interaction: discord.Interaction, error: Exception):
+        """Modal hata durumunda"""
+        print(f"[HATA] Yaş sıfırlama modal hatası: {type(error).__name__}: {error}")
+        import traceback
+        traceback.print_exc()
+        
+        try:
+            await interaction.followup.send(
+                "❌ Beklenmeyen bir hata oluştu. Lütfen tekrar deneyiniz.",
+                ephemeral=True
+            )
+        except:
+            print("[HATA] Kullanıcıya yaş sıfırlama modal hatası mesajı gönderilemedi!")
+
+
+class AgeResetConfirmView(discord.ui.View):
+    """Yaş sıfırlama onay view"""
+    
+    def __init__(self, bot: commands.Bot, current_name: str, current_age: int):
+        super().__init__(timeout=60)
+        self.bot = bot
+        self.current_name = current_name
+        self.current_age = current_age
+    
+    @discord.ui.button(label="Evet, Ticket Aç", style=discord.ButtonStyle.danger, emoji="✅")
+    async def confirm_reset(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Yaş sıfırlama ticket'ı açmayı onayla"""
+        try:
+            modal = AgeResetTicketModal(self.bot, self.current_name, self.current_age)
+            await interaction.response.send_modal(modal)
+        except Exception as e:
+            print(f"[HATA] Yaş sıfırlama modal açılırken hata: {type(e).__name__}: {e}")
+            try:
+                await interaction.response.send_message(
+                    "❌ Form açılırken bir hata oluştu. Lütfen tekrar deneyiniz.",
+                    ephemeral=True
+                )
+            except:
+                print("[HATA] Kullanıcıya modal açma hatası mesajı gönderilemedi!")
+    
+    @discord.ui.button(label="Hayır, İptal Et", style=discord.ButtonStyle.secondary, emoji="❌")
+    async def cancel_reset(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Yaş sıfırlama iptal edildi"""
+        await interaction.response.send_message(
+            "✅ Yaş sıfırlama işlemi iptal edildi.",
+            ephemeral=True
+        )
+        self.stop()
+
+
 class AgeVisibilityView(discord.ui.View):
     """Yaş görünürlüğü seçim butonu"""
     
@@ -559,7 +752,7 @@ class AgeVisibilityView(discord.ui.View):
                 description=f"**İsim:** {formatted_name}\n**Yaş:** {self.age}\n**Yaş Durumu:** {visibility_status}\n**Yeni İsim:** {new_nickname}",
                 color=discord.Color.green()
             )
-            embed.set_footer(text="Yaş görünürlüğünü /yas komutuyla değiştirebilirsiniz.")
+            embed.set_footer(text="Yaş görünürlüğünü /kayit-ayarlari komutuyla değiştirebilirsiniz.")
             
             await interaction.followup.send(embed=embed, ephemeral=True)
             
@@ -1265,14 +1458,14 @@ class Registration(commands.Cog):
             )
     
     @app_commands.command(
-        name="yas",
-        description="Kullanıcı adınızda yaşınızın görünürlüğünü ayarlayın"
+        name="kayit-ayarlari",
+        description="Kayıt ayarlarınızı düzenleyin (yaş görünürlüğü, rol yönetimi)"
     )
     async def age_settings(
         self,
         interaction: discord.Interaction
     ):
-        """Yaş görünürlüğü ayarlarını değiştir"""
+        """Kayıt ayarlarını yönet"""
         
         await interaction.response.defer(ephemeral=True)
         
@@ -1296,8 +1489,110 @@ class Registration(commands.Cog):
             name, age, registered_at, show_age = user_info
             current_status = "Görünür ✅" if show_age else "Gizli 👁️"
             
-            # Yaş görünürlüğü değiştirme view'ı
-            class AgeToggleView(discord.ui.View):
+            # Rol düzenleme select menu
+            class RoleManageSelect(discord.ui.Select):
+                def __init__(self, member: discord.Member):
+                    self.member = member
+                    
+                    # Yönetilebilir rol ID'leri
+                    self.manageable_role_ids = [
+                        1207713855854223391,
+                        1207713907498688512,
+                        1207713950742085643
+                    ]
+                    
+                    # Seçenekleri oluştur
+                    options = []
+                    for role_id in self.manageable_role_ids:
+                        role = member.guild.get_role(role_id)
+                        if role:
+                            # Kullanıcının bu rolü var mı kontrol et
+                            has_role = role in member.roles
+                            options.append(
+                                discord.SelectOption(
+                                    label=role.name,
+                                    value=str(role_id),
+                                    description=f"{'✅ Aktif' if has_role else '❌ Pasif'}",
+                                    emoji="✅" if has_role else "❌"
+                                )
+                            )
+                    
+                    super().__init__(
+                        placeholder="Düzenlemek istediğiniz rolleri seçin...",
+                        min_values=0,
+                        max_values=len(options),
+                        options=options,
+                        custom_id="role_manage_select"
+                    )
+                
+                async def callback(self, interaction: discord.Interaction):
+                    await interaction.response.defer(ephemeral=True)
+                    
+                    try:
+                        # Seçilen rol ID'leri
+                        selected_role_ids = [int(value) for value in self.values]
+                        
+                        # Mevcut roller ile karşılaştır
+                        added_roles = []
+                        removed_roles = []
+                        
+                        for role_id in self.manageable_role_ids:
+                            role = self.member.guild.get_role(role_id)
+                            if not role:
+                                continue
+                            
+                            has_role = role in self.member.roles
+                            should_have = role_id in selected_role_ids
+                            
+                            if should_have and not has_role:
+                                # Rol verilecek
+                                try:
+                                    await self.member.add_roles(role, reason="Kullanıcı rol yönetimi")
+                                    added_roles.append(role.name)
+                                except Exception as e:
+                                    print(f"[HATA] Rol eklenirken hata ({role.name}): {e}")
+                            elif not should_have and has_role:
+                                # Rol alınacak
+                                try:
+                                    await self.member.remove_roles(role, reason="Kullanıcı rol yönetimi")
+                                    removed_roles.append(role.name)
+                                except Exception as e:
+                                    print(f"[HATA] Rol kaldırılırken hata ({role.name}): {e}")
+                        
+                        # Sonuç mesajı
+                        result_parts = []
+                        if added_roles:
+                            result_parts.append(f"**Eklenen Roller:** {', '.join(added_roles)}")
+                        if removed_roles:
+                            result_parts.append(f"**Kaldırılan Roller:** {', '.join(removed_roles)}")
+                        
+                        if not result_parts:
+                            result_msg = "Herhangi bir değişiklik yapılmadı."
+                        else:
+                            result_msg = "\n".join(result_parts)
+                        
+                        embed = discord.Embed(
+                            title="✅ Roller Güncellendi!",
+                            description=result_msg,
+                            color=discord.Color.green()
+                        )
+                        
+                        await interaction.followup.send(embed=embed, ephemeral=True)
+                        
+                    except Exception as e:
+                        print(f"[HATA] Rol yönetimi hatası: {e}")
+                        await interaction.followup.send(
+                            "❌ Roller güncellenirken bir hata oluştu!",
+                            ephemeral=True
+                        )
+            
+            class RoleManageView(discord.ui.View):
+                def __init__(self, member: discord.Member):
+                    super().__init__(timeout=60)
+                    self.add_item(RoleManageSelect(member))
+            
+            # Ana ayarlar view'ı
+            class RegistrationSettingsView(discord.ui.View):
                 def __init__(self, bot, stats_cog, member, name, age, current_show_age):
                     super().__init__(timeout=60)
                     self.bot = bot
@@ -1307,13 +1602,72 @@ class Registration(commands.Cog):
                     self.age = age
                     self.current_show_age = current_show_age
                 
-                @discord.ui.button(label="Yaşımı Göster", style=discord.ButtonStyle.success, emoji="✅")
+                @discord.ui.button(label="Yaşımı Göster", style=discord.ButtonStyle.success, emoji="✅", row=0)
                 async def show_age(self, interaction: discord.Interaction, button: discord.ui.Button):
                     await self.toggle_age(interaction, True)
                 
-                @discord.ui.button(label="Yaşımı Gizle", style=discord.ButtonStyle.secondary, emoji="👁️")
+                @discord.ui.button(label="Yaşımı Gizle", style=discord.ButtonStyle.secondary, emoji="👁️", row=0)
                 async def hide_age(self, interaction: discord.Interaction, button: discord.ui.Button):
                     await self.toggle_age(interaction, False)
+                
+                @discord.ui.button(label="Rolleri Düzenle", style=discord.ButtonStyle.primary, emoji="🎭", row=1)
+                async def manage_roles(self, interaction: discord.Interaction, button: discord.ui.Button):
+                    """Rol yönetim menüsünü aç"""
+                    try:
+                        embed = discord.Embed(
+                            title="🎭 Rol Yönetimi",
+                            description=(
+                                "Aşağıdaki menüden düzenlemek istediğiniz rolleri seçebilirsiniz.\n\n"
+                                "**Nasıl Kullanılır:**\n"
+                                "• Menüden istediğiniz rolleri seçin\n"
+                                "• Seçtiğiniz roller size **eklenecek**\n"
+                                "• Seçmediğiniz roller **kaldırılacak**\n"
+                                "• Hiçbir rol seçmezseniz tüm roller kaldırılır\n\n"
+                                "✅ = Şu anda aktif\n"
+                                "❌ = Şu anda pasif"
+                            ),
+                            color=discord.Color.blue()
+                        )
+                        embed.set_footer(text="Değişiklikler anında uygulanacaktır")
+                        
+                        role_view = RoleManageView(self.member)
+                        await interaction.response.send_message(embed=embed, view=role_view, ephemeral=True)
+                        
+                    except Exception as e:
+                        print(f"[HATA] Rol yönetim menüsü açılırken hata: {e}")
+                        await interaction.response.send_message(
+                            "❌ Rol yönetim menüsü açılırken bir hata oluştu!",
+                            ephemeral=True
+                        )
+                
+                @discord.ui.button(label="Yaşımı Sıfırla", style=discord.ButtonStyle.danger, emoji="🔄", row=1)
+                async def reset_age(self, interaction: discord.Interaction, button: discord.ui.Button):
+                    """Yaş sıfırlama onay sorusu göster"""
+                    try:
+                        embed = discord.Embed(
+                            title="⚠️ Yaş Sıfırlama Onayı",
+                            description=(
+                                "**Yaşınızı sıfırlamak için yetkili desteği gereklidir.**\n\n"
+                                "Bu işlem için bir destek ticket'ı açılacaktır. Ticket'ta:\n"
+                                "• Yaşınızı neden sıfırlamak istediğinizi belirtmeniz\n"
+                                "• Doğru yaşınızı (biliyorsanız) girmeniz\n"
+                                "gerekecektir.\n\n"
+                                "Yetkililerin onayı sonrasında yaşınız güncellenecektir.\n\n"
+                                "**Devam etmek istiyor musunuz?**"
+                            ),
+                            color=discord.Color.orange()
+                        )
+                        embed.set_footer(text="Ticket açılması durumunda yetkililere bildirim gönderilecektir")
+                        
+                        confirm_view = AgeResetConfirmView(self.bot, self.name, self.age)
+                        await interaction.response.send_message(embed=embed, view=confirm_view, ephemeral=True)
+                        
+                    except Exception as e:
+                        print(f"[HATA] Yaş sıfırlama onay mesajı gösterilirken hata: {e}")
+                        await interaction.response.send_message(
+                            "❌ Bir hata oluştu. Lütfen tekrar deneyiniz.",
+                            ephemeral=True
+                        )
                 
                 async def toggle_age(self, interaction: discord.Interaction, show_age: bool):
                     await interaction.response.defer(ephemeral=True)
@@ -1361,23 +1715,33 @@ class Registration(commands.Cog):
                         )
             
             embed = discord.Embed(
-                title="👁️ Yaş Görünürlüğü Ayarları",
+                title="⚙️ Kayıt Ayarları",
                 description=(
-                    f"**Mevcut Durum:** {current_status}\n\n"
-                    f"**İsim:** {name}\n"
-                    f"**Yaş:** {age}\n\n"
-                    "🎭 **Kullanıcı adınızda yaşınız görünsün mü?**\n\n"
-                    "Aşağıdaki butonlardan birini seçerek yaş görünürlüğünüzü değiştirebilirsiniz."
-                ),
+                    f"**Kayıt Bilgileriniz:**\n"
+                    f"• İsim: {name}\n"
+                    f"• Yaş: {age}\n"
+                    f"• Yaş Durumu: {current_status}\n\n"
+                    "**Kullanılabilir Ayarlar:**\n\n"
+                    "🔸 **Yaş Görünürlüğü**\n"
+                    "• Yaşınızın kullanıcı adınızda görünmesini ayarlayın\n"
+                    "• Göster: `{0} | {1}` formatında\n"
+                    "• Gizle: `{0}` formatında\n\n"
+                    "🔸 **Rol Yönetimi**\n"
+                    "• İstediğiniz rolleri kendiniz ekleyip kaldırabilirsiniz\n"
+                    "• Rollerinizi dilediğiniz gibi özelleştirin\n\n"
+                    "🔸 **Yaş Sıfırlama**\n"
+                    "• Yanlış yaş girildiyse yetkili desteği ile düzeltilebilir\n"
+                    "• Ticket açılarak değişiklik talebinde bulunabilirsiniz"
+                ).format(name, age),
                 color=discord.Color.blue()
             )
-            embed.set_footer(text="Yaş bilginiz her zaman yöneticiler tarafından görülebilir")
+            embed.set_footer(text="Aşağıdaki butonları kullanarak ayarlarınızı değiştirebilirsiniz")
             
-            view = AgeToggleView(self.bot, stats_cog, interaction.user, name, age, show_age)
+            view = RegistrationSettingsView(self.bot, stats_cog, interaction.user, name, age, show_age)
             await interaction.followup.send(embed=embed, view=view, ephemeral=True)
             
         except Exception as e:
-            print(f"[HATA] Yaş ayarları hatası: {type(e).__name__}: {e}")
+            print(f"[HATA] Kayıt ayarları hatası: {type(e).__name__}: {e}")
             await interaction.followup.send(
                 "❌ Beklenmeyen bir hata oluştu.",
                 ephemeral=True
