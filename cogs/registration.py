@@ -1004,7 +1004,7 @@ class Registration(commands.Cog):
         self.bot.add_view(TicketControlView())
     
     @app_commands.command(
-        name="kayit_embed",
+        name="kayit-embed",
         description="Kayıt embed'ini belirtilen kanala gönderir"
     )
     @app_commands.default_permissions(administrator=True)
@@ -1211,7 +1211,7 @@ class Registration(commands.Cog):
             )
     
     @app_commands.command(
-        name="kayit_sifirla",
+        name="kayit-sifirla",
         description="Seçilen kullanıcının kaydını sıfırlar"
     )
     @app_commands.default_permissions(administrator=True)
