@@ -1100,7 +1100,7 @@ class NotificationRoleConfirmView(discord.ui.View):
         )
         
         view = NotificationRoleSelectView(self.bot, self.member, self.name, self.age, self.show_age)
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        await interaction.response.edit_message(embed=embed, view=view)
     
     @discord.ui.button(label="Hayır", style=discord.ButtonStyle.secondary, emoji="❌")
     async def no_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -1151,11 +1151,11 @@ class AgeVisibilityView(discord.ui.View):
         embed.set_footer(text="İsterseniz rolleri daha sonra da alabilirsiniz")
         
         view = NotificationRoleConfirmView(self.bot, self.member, self.name, self.age, self.show_age)
-        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+        await interaction.response.edit_message(embed=embed, view=view)
     
     async def complete_registration(self, interaction: discord.Interaction, selected_roles: list = None):
         """Kayıt işlemini tamamla"""
-        await interaction.response.defer(ephemeral=True)
+        # Not: Burada defer kullanmıyoruz çünkü embed'i güncelleyeceğiz
         
         try:
             guild = interaction.guild
@@ -1175,10 +1175,12 @@ class AgeVisibilityView(discord.ui.View):
             
             if not registered_role:
                 print(f"[HATA] Kayıtlı rolü bulunamadı! Rol ID: {REGISTERED_ROLE_ID}")
-                return await interaction.followup.send(
-                    "❌ Sistem hatası oluştu. Lütfen yetkililere bildirin.",
-                    ephemeral=True
+                error_embed = discord.Embed(
+                    title="❌ Sistem Hatası",
+                    description="Kayıt işlemi sırasında bir hata oluştu. Lütfen yetkililere bildirin.",
+                    color=discord.Color.red()
                 )
+                return await interaction.response.edit_message(embed=error_embed, view=None)
             
             # Kayıtsız rolünü kaldır
             try:
@@ -1192,10 +1194,12 @@ class AgeVisibilityView(discord.ui.View):
                 await self.member.add_roles(registered_role, reason="Kayıt işlemi")
             except Exception as e:
                 print(f"[HATA] Rol verilirken hata: {e}")
-                return await interaction.followup.send(
-                    "❌ Sistem hatası oluştu. Lütfen yetkililere bildirin.",
-                    ephemeral=True
+                error_embed = discord.Embed(
+                    title="❌ Sistem Hatası",
+                    description="Kayıt işlemi sırasında bir hata oluştu. Lütfen yetkililere bildirin.",
+                    color=discord.Color.red()
                 )
+                return await interaction.response.edit_message(embed=error_embed, view=None)
             
             # İsmi değiştir
             try:
@@ -1227,14 +1231,15 @@ class AgeVisibilityView(discord.ui.View):
                 if role_names:
                     description += f"\n**Bildirim Rolleri:** {', '.join(role_names)}"
             
-            embed = discord.Embed(
+            success_embed = discord.Embed(
                 title="✅ Kayıt Başarılı!",
                 description=description,
                 color=discord.Color.green()
             )
-            embed.set_footer(text="Yaş görünürlüğünü ve rolleri /kayit-ayarlari komutuyla değiştirebilirsiniz.")
+            success_embed.set_footer(text="Yaş görünürlüğünü ve rolleri /kayit-ayarlari komutuyla değiştirebilirsiniz.")
             
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            # Mevcut embed'i güncelle (view'ı kaldır)
+            await interaction.response.edit_message(embed=success_embed, view=None)
             
             # İstatistik veritabanına kaydet
             try:
@@ -1299,10 +1304,16 @@ class AgeVisibilityView(discord.ui.View):
                 
         except Exception as e:
             print(f"[HATA] Beklenmeyen kayıt hatası: {type(e).__name__}: {e}")
-            await interaction.followup.send(
-                "❌ Beklenmeyen bir hata oluştu. Lütfen yetkililere bildirin.",
-                ephemeral=True
+            error_embed = discord.Embed(
+                title="❌ Beklenmeyen Hata",
+                description="Kayıt işlemi sırasında beklenmeyen bir hata oluştu. Lütfen yetkililere bildirin.",
+                color=discord.Color.red()
             )
+            try:
+                await interaction.response.edit_message(embed=error_embed, view=None)
+            except:
+                # Eğer zaten response edildiyse followup kullan
+                await interaction.followup.send(embed=error_embed, ephemeral=True)
         
         self.stop()
 
