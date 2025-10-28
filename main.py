@@ -96,7 +96,6 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
     
     # Bot bir kanaldan ayrıldı mı?
     if before.channel and not after.channel:
-        print(f"⚠️ Bot {before.channel.name} ses kanalından ayrıldı. Yeniden bağlanılıyor... {datetime.datetime.now(turkey_tz).strftime('%d.%m.%Y %H:%M:%S')}")
         try:
             # Ses kanalını bul
             voice_channel = None
@@ -111,7 +110,6 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
                 import asyncio
                 await asyncio.sleep(2)
                 await voice_channel.connect()
-                print(f"🎤 Bot {voice_channel.name} ses kanalına tekrar bağlandı. {datetime.datetime.now(turkey_tz).strftime('%d.%m.%Y %H:%M:%S')}")
             else:
                 print(f"[HATA] {voice_channel.name} ses kanalı bulunamadı! Kanal ID: {VOICE_CHANNEL_ID}")
         except Exception as e:
