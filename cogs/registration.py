@@ -291,14 +291,258 @@ class TicketCloseConfirmView(discord.ui.View):
 class TicketControlView(discord.ui.View):
     """Ticket kontrol butonları"""
     
-    def __init__(self):
+    def __init__(self, bot: commands.Bot = None, member: discord.Member = None, name: str = None, age: int = None, show_age: bool = None):
         super().__init__(timeout=None)  # Kalıcı buton
+        self.bot = bot
+        self.member = member
+        self.name = name
+        self.age = age
+        self.show_age = show_age
+    
+    @discord.ui.button(
+        label="Manuel Kayıt",
+        style=discord.ButtonStyle.success,
+        emoji="✅",
+        custom_id="manual_register_button",
+        row=0
+    )
+    async def manual_register(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Manuel kayıt butonu"""
+        try:
+            # Yönetici kontrolü
+            if not interaction.user.guild_permissions.administrator:
+                return await interaction.response.send_message(
+                    "❌ Bu işlem için yönetici yetkisi gereklidir!",
+                    ephemeral=True
+                )
+            
+            # Kayıt bilgilerinin olup olmadığını kontrol et
+            if not all([self.bot, self.member, self.name, self.age is not None, self.show_age is not None]):
+                return await interaction.response.send_message(
+                    "❌ Kayıt bilgileri bulunamadı! Lütfen /kayit komutunu kullanın.",
+                    ephemeral=True
+                )
+            
+            # Kayıt işlemini gerçekleştir
+            await interaction.response.defer(ephemeral=True)
+            
+            # AgeVisibilityView'ın complete_registration metodunu kullan
+            age_view = AgeVisibilityView(self.bot, self.member, self.name, self.age)
+            age_view.show_age = self.show_age
+            
+            # Dummy interaction oluştur (kayıt mesajını ticket kanalına göndermek için)
+            # complete_registration metodunu çağır
+            try:
+                guild = interaction.guild
+                
+                # İsmi formatla
+                formatted_name = turkish_title_case(self.name)
+                
+                # Nickname'i ayarla (yaş görünürlüğüne göre)
+                if self.show_age:
+                    new_nickname = f"{formatted_name} | {self.age}"
+                else:
+                    new_nickname = formatted_name
+                
+                # Rolleri al
+                unregistered_role = guild.get_role(UNREGISTERED_ROLE_ID)
+                registered_role = guild.get_role(REGISTERED_ROLE_ID)
+                
+                if not registered_role:
+                    return await interaction.followup.send(
+                        "❌ Kayıtlı rolü bulunamadı!",
+                        ephemeral=True
+                    )
+                
+                # Kayıtsız rolünü kaldır
+                if unregistered_role and unregistered_role in self.member.roles:
+                    await self.member.remove_roles(unregistered_role, reason=f"Manuel kayıt - Yetkili: {interaction.user}")
+                
+                # Kayıtlı rolünü ver
+                await self.member.add_roles(registered_role, reason=f"Manuel kayıt - Yetkili: {interaction.user}")
+                
+                # Nickname'i ayarla
+                try:
+                    await self.member.edit(nick=new_nickname, reason="Kayıt işlemi")
+                except discord.Forbidden:
+                    print(f"[UYARI] {self.member} için nickname ayarlanamadı (yetki yok)")
+                
+                # İstatistikleri kaydet
+                try:
+                    stats_cog = self.bot.get_cog("RegistrationStats")
+                    if stats_cog:
+                        await stats_cog.add_registration(
+                            user_id=str(self.member.id),
+                            username=str(self.member),
+                            name=formatted_name,
+                            age=self.age,
+                            show_age=self.show_age
+                        )
+                except Exception as e:
+                    print(f"[HATA] İstatistik veritabanına kaydedilirken hata: {type(e).__name__}: {e}")
+                
+                # Başarı mesajı
+                visibility_status = "Görünür" if self.show_age else "Gizli"
+                success_embed = discord.Embed(
+                    title="✅ Kayıt Başarılı",
+                    description=(
+                        f"**Kullanıcı:** {self.member.mention}\n"
+                        f"**İsim:** {formatted_name}\n"
+                        f"**Yaş:** {self.age}\n"
+                        f"**Yaş Durumu:** {visibility_status}\n"
+                        f"**Nickname:** {new_nickname}\n"
+                        f"**Kayıt Eden:** {interaction.user.mention}"
+                    ),
+                    color=discord.Color.green()
+                )
+                
+                # Ticket kanalına mesaj gönder
+                await interaction.channel.send(embed=success_embed)
+                
+                # Yetkili'ye ephemeral mesaj
+                await interaction.followup.send(
+                    "✅ Kullanıcı başarıyla kaydedildi!",
+                    ephemeral=True
+                )
+                
+                # Log kanalına bildirim gönder
+                try:
+                    log_channel = guild.get_channel(LOG_CHANNEL_ID)
+                    if log_channel:
+                        log_embed = discord.Embed(
+                            title="✅ Manuel Kayıt",
+                            description=f"{self.member.mention} manuel olarak kaydedildi!",
+                            color=discord.Color.green(),
+                            timestamp=discord.utils.utcnow()
+                        )
+                        log_embed.add_field(
+                            name="👤 Kullanıcı Bilgileri",
+                            value=f"**Kullanıcı:** {self.member.mention}\n**ID:** `{self.member.id}`\n**Tag:** {self.member}",
+                            inline=False
+                        )
+                        log_embed.add_field(
+                            name="📋 Kayıt Bilgileri",
+                            value=f"**İsim:** {formatted_name}\n**Yaş:** {self.age}\n**Yaş Durumu:** {visibility_status}\n**Yeni Nickname:** {new_nickname}",
+                            inline=False
+                        )
+                        log_embed.add_field(
+                            name="👮 Yetkili",
+                            value=f"**Kaydeden:** {interaction.user.mention}\n**ID:** `{interaction.user.id}`",
+                            inline=False
+                        )
+                        log_embed.add_field(
+                            name="🎭 Rol Değişiklikleri",
+                            value=f"**Verilen:** <@&{REGISTERED_ROLE_ID}>\n**Alınan:** <@&{UNREGISTERED_ROLE_ID}>",
+                            inline=False
+                        )
+                        log_embed.set_thumbnail(url=self.member.display_avatar.url)
+                        log_embed.set_footer(text="HydRaboN Manuel Kayıt Sistemi", icon_url=guild.icon.url if guild.icon else None)
+                        
+                        await log_channel.send(embed=log_embed)
+                except Exception as e:
+                    print(f"[HATA] Log kanalına mesaj gönderilirken hata: {type(e).__name__}: {e}")
+                
+                # Hoş geldin mesajı gönder
+                try:
+                    welcome_cog = self.bot.get_cog("Welcome")
+                    if welcome_cog:
+                        await welcome_cog.send_welcome_message(self.member)
+                except Exception as e:
+                    print(f"[HATA] Hoş geldin mesajı gönderilirken hata: {type(e).__name__}: {e}")
+                
+                # Manuel kayıt butonunu devre dışı bırak
+                button.disabled = True
+                button.label = "Kayıt Tamamlandı"
+                await interaction.message.edit(view=self)
+                
+                # Ticket'ı otomatik olarak kapat (5 saniye sonra)
+                try:
+                    import asyncio
+                    
+                    # Kapatılma bilgisi mesajı
+                    closing_embed = discord.Embed(
+                        title="🔒 Ticket Kapatılıyor",
+                        description="Kayıt işlemi başarıyla tamamlandı. Bu ticket 5 saniye içinde kapatılacak.",
+                        color=discord.Color.orange()
+                    )
+                    await interaction.channel.send(embed=closing_embed)
+                    
+                    # 5 saniye bekle
+                    await asyncio.sleep(5)
+                    
+                    # Ticket log kanalına transcript gönder
+                    try:
+                        log_channel = guild.get_channel(TICKET_LOG_CHANNEL_ID)
+                        if log_channel:
+                            # Tüm mesajları topla
+                            messages = []
+                            async for message in interaction.channel.history(limit=None, oldest_first=True):
+                                timestamp = message.created_at.strftime("%Y-%m-%d %H:%M:%S")
+                                content = message.content or "[Embed/Attachment]"
+                                messages.append(f"[{timestamp}] {message.author}: {content}")
+                            
+                            # Transcript oluştur
+                            transcript = "\n".join(messages)
+                            
+                            # Dosya olarak kaydet
+                            import io
+                            transcript_file = io.BytesIO(transcript.encode('utf-8'))
+                            transcript_file.seek(0)
+                            
+                            # Log embed'i
+                            transcript_embed = discord.Embed(
+                                title="📝 Ticket Kapatıldı (Otomatik)",
+                                description=f"**Ticket:** {interaction.channel.name}\n**Kapatma Sebebi:** Manuel kayıt tamamlandı",
+                                color=discord.Color.red(),
+                                timestamp=discord.utils.utcnow()
+                            )
+                            transcript_embed.add_field(
+                                name="👤 Kullanıcı",
+                                value=f"{self.member.mention} (`{self.member.id}`)",
+                                inline=False
+                            )
+                            transcript_embed.add_field(
+                                name="📋 Kayıt Bilgileri",
+                                value=f"**İsim:** {formatted_name}\n**Yaş:** {self.age}\n**Yaş Durumu:** {visibility_status}",
+                                inline=False
+                            )
+                            
+                            await log_channel.send(
+                                embed=transcript_embed,
+                                file=discord.File(transcript_file, filename=f"transcript-{interaction.channel.name}.txt")
+                            )
+                    except Exception as e:
+                        print(f"[HATA] Ticket transcript kaydedilirken hata: {type(e).__name__}: {e}")
+                    
+                    # Kanalı sil
+                    await interaction.channel.delete(reason="Kayıt tamamlandı - Otomatik kapatma")
+                    
+                except Exception as e:
+                    print(f"[HATA] Ticket otomatik kapatılırken hata: {type(e).__name__}: {e}")
+                
+            except Exception as e:
+                print(f"[HATA] Manuel kayıt hatası: {type(e).__name__}: {e}")
+                await interaction.followup.send(
+                    f"❌ Kayıt sırasında bir hata oluştu: {str(e)}",
+                    ephemeral=True
+                )
+                
+        except Exception as e:
+            print(f"[HATA] Manuel kayıt butonu hatası: {type(e).__name__}: {e}")
+            try:
+                await interaction.response.send_message(
+                    "❌ Bir hata oluştu. Lütfen tekrar deneyiniz.",
+                    ephemeral=True
+                )
+            except:
+                print("[HATA] Kullanıcıya manuel kayıt hatası mesajı gönderilemedi!")
     
     @discord.ui.button(
         label="Ticket'ı Kapat",
         style=discord.ButtonStyle.danger,
         emoji="🔒",
-        custom_id="close_ticket_button"
+        custom_id="close_ticket_button",
+        row=0
     )
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Ticket kapatma butonu"""
@@ -357,6 +601,15 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
         style=discord.TextStyle.short
     )
     
+    show_age_input = discord.ui.TextInput(
+        label="İsmimin yanında yaşım gözüksün mü?",
+        placeholder="Evet veya Hayır yazınız",
+        min_length=3,
+        max_length=5,
+        required=True,
+        style=discord.TextStyle.short
+    )
+    
     def __init__(self, bot: commands.Bot):
         super().__init__()
         self.bot = bot
@@ -367,8 +620,31 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
         
         name = self.name_input.value.strip()
         age_str = self.age_input.value.strip()
+        show_age_str = self.show_age_input.value.strip().lower()
+        
+        # Yaş görünürlüğünü parse et
+        if show_age_str in ["evet", "e", "yes", "y"]:
+            show_age = True
+            show_age_text = "✅ Evet"
+        else:
+            show_age = False
+            show_age_text = "❌ Hayır"
         
         try:
+            # Yaş doğrulaması
+            try:
+                age = int(age_str)
+                if age < 13 or age > 99:
+                    return await interaction.followup.send(
+                        "❌ Geçersiz yaş! Lütfen 13-99 arası bir yaş giriniz.",
+                        ephemeral=True
+                    )
+            except ValueError:
+                return await interaction.followup.send(
+                    "❌ Geçersiz yaş formatı! Lütfen sadece sayı giriniz.",
+                    ephemeral=True
+                )
+            
             # Kategoriyi al
             category = interaction.guild.get_channel(TICKET_CATEGORY_ID)
             
@@ -412,7 +688,8 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
                     f"**Kullanıcı:** {interaction.user.mention}\n"
                     f"**Kullanıcı ID:** {interaction.user.id}\n"
                     f"**İsim:** {name}\n"
-                    f"**Yaş:** {age_str}\n\n"
+                    f"**Yaş:** {age}\n"
+                    f"**Yaş Görünürlüğü:** {show_age_text}\n\n"
                     "Yetkililere bildirim gönderildi. Lütfen bekleyin."
                 ),
                 color=discord.Color.orange()
@@ -421,8 +698,8 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
             embed.set_footer(text="Kayıt Destek Sistemi")
             embed.timestamp = discord.utils.utcnow()
             
-            # Ticket kontrol view'ı ile gönder
-            view = TicketControlView()
+            # Ticket kontrol view'ı ile gönder (manuel kayıt butonu ekli)
+            view = TicketControlView(self.bot, interaction.user, name, age, show_age)
             await ticket_channel.send(
                 content=f"{interaction.user.mention}",
                 embed=embed,
@@ -452,7 +729,7 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
                     )
                     log_embed.add_field(
                         name="📋 Ticket Bilgileri",
-                        value=f"**Kanal:** {ticket_channel.mention}\n**İsim:** {name}\n**Yaş:** {age_str}",
+                        value=f"**Kanal:** {ticket_channel.mention}\n**İsim:** {name}\n**Yaş:** {age}\n**Yaş Görünürlüğü:** {show_age_text}",
                         inline=False
                     )
                     log_embed.set_thumbnail(url=interaction.user.display_avatar.url)
@@ -1612,170 +1889,6 @@ class Registration(commands.Cog):
             print(f"[HATA] Kayıt embed'i gönderilirken beklenmeyen hata: {type(e).__name__}: {e}")
             await interaction.response.send_message(
                 "❌ Beklenmeyen bir hata oluştu. Lütfen yetkililere bildirin.",
-                ephemeral=True
-            )
-    
-    @app_commands.command(
-        name="kayit",
-        description="Manuel olarak kullanıcı kaydı yapar (Acil durumlar için)"
-    )
-    @app_commands.default_permissions(administrator=True)
-    async def manual_registration(
-        self,
-        interaction: discord.Interaction,
-        kullanici: discord.Member,
-        isim: str,
-        yas: int
-    ):
-        """Manuel kayıt işlemi yapar"""
-        
-        await interaction.response.defer(ephemeral=True)
-        
-        try:
-            # Yaş kontrolü
-            if yas < 13 or yas > 99:
-                return await interaction.followup.send(
-                    "❌ Yaş 13-99 arasında olmalıdır!",
-                    ephemeral=True
-                )
-            
-            # İsim formatı kontrolü (sadece harf ve boşluk)
-            if not re.match(r'^[a-zA-ZğüşöçıİĞÜŞÖÇ\s]+$', isim):
-                return await interaction.followup.send(
-                    "❌ İsim sadece harflerden oluşmalıdır!",
-                    ephemeral=True
-                )
-            
-            # İsmi formatla: Her kelimenin baş harfini büyük yap (Türkçe uyumlu)
-            formatted_name = turkish_title_case(isim)
-            
-            # Yeni nickname: İsim | Yaş
-            new_nickname = f"{formatted_name} | {yas}"
-            
-            # Rolleri al
-            guild = interaction.guild
-            unregistered_role = guild.get_role(UNREGISTERED_ROLE_ID)
-            registered_role = guild.get_role(REGISTERED_ROLE_ID)
-            
-            if not registered_role:
-                print(f"[HATA] Kayıtlı rolü bulunamadı! Rol ID: {REGISTERED_ROLE_ID}")
-                return await interaction.followup.send(
-                    "❌ Sistem hatası: Kayıtlı rolü bulunamadı!",
-                    ephemeral=True
-                )
-            
-            # Kayıtsız rolünü kaldır
-            try:
-                if unregistered_role and unregistered_role in kullanici.roles:
-                    await kullanici.remove_roles(unregistered_role, reason=f"Manuel kayıt - {interaction.user}")
-            except discord.Forbidden:
-                print(f"[HATA] Rol kaldırma yetkisi yok! Hedef: {kullanici}")
-            except Exception as e:
-                print(f"[HATA] Rol kaldırılırken hata: {type(e).__name__}: {e}")
-            
-            # Kayıtlı rolünü ver
-            try:
-                await kullanici.add_roles(registered_role, reason=f"Manuel kayıt - {interaction.user}")
-            except discord.Forbidden:
-                print(f"[HATA] Rol verme yetkisi yok! Bot rolü, hedef rolden daha üstte olmalı.")
-                return await interaction.followup.send(
-                    "❌ Rol verme yetkim yok! Bot rolü hedef rolden daha üstte olmalı.",
-                    ephemeral=True
-                )
-            except Exception as e:
-                print(f"[HATA] Rol verilirken hata: {type(e).__name__}: {e}")
-                return await interaction.followup.send(
-                    "❌ Rol verilirken bir hata oluştu.",
-                    ephemeral=True
-                )
-            
-            # İsmi değiştir
-            try:
-                await kullanici.edit(nick=new_nickname, reason=f"Manuel kayıt - {interaction.user}")
-            except discord.Forbidden:
-                print(f"[HATA] İsim değiştirme yetkisi yok! Bot rolü hedef kullanıcıdan daha üstte olmalı.")
-                # İsim değiştirilemese de kayıt devam etsin
-            except Exception as e:
-                print(f"[HATA] İsim değiştirilirken hata: {type(e).__name__}: {e}")
-                # İsim değiştirilemese de kayıt devam etsin
-            
-            # İstatistik veritabanına kaydet (manuel kayıt - yaş varsayılan olarak görünür)
-            try:
-                stats_cog = self.bot.get_cog("RegistrationStats")
-                if stats_cog:
-                    await stats_cog.add_registration(
-                        user_id=str(kullanici.id),
-                        username=str(kullanici),
-                        name=formatted_name,
-                        age=yas,
-                        show_age=True  # Manuel kayıtlarda yaş varsayılan olarak görünür
-                    )
-            except Exception as e:
-                print(f"[HATA] İstatistik veritabanına kaydedilirken hata: {type(e).__name__}: {e}")
-            
-            # Başarılı mesajı
-            embed = discord.Embed(
-                title="✅ Manuel Kayıt Başarılı!",
-                description=f"{kullanici.mention} kullanıcısı manuel olarak kayıt edildi.",
-                color=discord.Color.green()
-            )
-            embed.add_field(name="İşlem Yapan", value=interaction.user.mention, inline=True)
-            embed.add_field(name="Kayıt Edilen", value=kullanici.mention, inline=True)
-            embed.add_field(name="İsim", value=formatted_name, inline=True)
-            embed.add_field(name="Yaş", value=str(yas), inline=True)
-            embed.add_field(name="Yeni Nickname", value=new_nickname, inline=False)
-            
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            
-            # Log kanalına bildirim gönder
-            try:
-                log_channel = guild.get_channel(LOG_CHANNEL_ID)
-                if log_channel:
-                    log_embed = discord.Embed(
-                        title="📝 Manuel Kayıt",
-                        description=f"{kullanici.mention} manuel olarak kayıt edildi.",
-                        color=discord.Color.blue(),
-                        timestamp=discord.utils.utcnow()
-                    )
-                    log_embed.add_field(
-                        name="👤 Kayıt Edilen Kullanıcı",
-                        value=f"**Kullanıcı:** {kullanici.mention}\n**ID:** `{kullanici.id}`\n**Tag:** {kullanici}",
-                        inline=False
-                    )
-                    log_embed.add_field(
-                        name="📋 Kayıt Bilgileri",
-                        value=f"**İsim:** {formatted_name}\n**Yaş:** {yas}\n**Yeni Nickname:** {new_nickname}",
-                        inline=False
-                    )
-                    log_embed.add_field(
-                        name="🎭 Rol Değişiklikleri",
-                        value=f"**Verilen:** <@&{REGISTERED_ROLE_ID}>\n**Alınan:** <@&{UNREGISTERED_ROLE_ID}>",
-                        inline=False
-                    )
-                    log_embed.add_field(
-                        name="⚙️ İşlem Bilgileri",
-                        value=f"**İşlemi Yapan:** {interaction.user.mention}\n**İşlem Türü:** Manuel Kayıt\n**Komut:** `/kayit`",
-                        inline=False
-                    )
-                    log_embed.set_thumbnail(url=kullanici.display_avatar.url)
-                    log_embed.set_footer(text="HydRaboN Manuel Kayıt Sistemi", icon_url=guild.icon.url if guild.icon else None)
-                    
-                    await log_channel.send(embed=log_embed)
-            except Exception as e:
-                print(f"[HATA] Log kanalına manuel kayıt mesajı gönderilirken hata: {type(e).__name__}: {e}")
-            
-            # Hoş geldin mesajı gönder
-            try:
-                welcome_cog = self.bot.get_cog("Welcome")
-                if welcome_cog:
-                    await welcome_cog.send_welcome_message(kullanici)
-            except Exception as e:
-                print(f"[HATA] Hoş geldin mesajı gönderilirken hata: {type(e).__name__}: {e}")
-            
-        except Exception as e:
-            print(f"[HATA] Manuel kayıt hatası: {type(e).__name__}: {e}")
-            await interaction.followup.send(
-                "❌ Beklenmeyen bir hata oluştu.",
                 ephemeral=True
             )
     
