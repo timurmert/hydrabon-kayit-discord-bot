@@ -1073,7 +1073,7 @@ class NotificationRoleSelectView(discord.ui.View):
         # Kayıt işlemini tamamla (AgeVisibilityView'ın complete_registration metodunu çağır)
         age_view = AgeVisibilityView(self.bot, self.member, self.name, self.age)
         age_view.show_age = self.show_age
-        await age_view.complete_registration(interaction, selected_role_ids)
+        await age_view.complete_registration(interaction, selected_role_ids, defer_first=True)
 
 
 class NotificationRoleConfirmView(discord.ui.View):
@@ -1093,8 +1093,7 @@ class NotificationRoleConfirmView(discord.ui.View):
         embed = discord.Embed(
             title="🔔 Bildirim Rollerini Seçin",
             description=(
-                "Aşağıdaki menüden almak istediğiniz bildirim rollerini seçebilirsiniz.\n\n"
-                "**İpucu:** Birden fazla rol seçebilirsiniz veya hiç seçmeden geçebilirsiniz."
+                "Aşağıdaki menüden almak istediğiniz bildirim rollerini seçebilirsiniz."
             ),
             color=discord.Color.blue()
         )
@@ -1153,9 +1152,11 @@ class AgeVisibilityView(discord.ui.View):
         view = NotificationRoleConfirmView(self.bot, self.member, self.name, self.age, self.show_age)
         await interaction.response.edit_message(embed=embed, view=view)
     
-    async def complete_registration(self, interaction: discord.Interaction, selected_roles: list = None):
+    async def complete_registration(self, interaction: discord.Interaction, selected_roles: list = None, defer_first: bool = False):
         """Kayıt işlemini tamamla"""
-        # Not: Burada defer kullanmıyoruz çünkü embed'i güncelleyeceğiz
+        # Select menu'den geliyorsa önce defer et
+        if defer_first:
+            await interaction.response.defer(ephemeral=True)
         
         try:
             guild = interaction.guild
@@ -1180,7 +1181,10 @@ class AgeVisibilityView(discord.ui.View):
                     description="Kayıt işlemi sırasında bir hata oluştu. Lütfen yetkililere bildirin.",
                     color=discord.Color.red()
                 )
-                return await interaction.response.edit_message(embed=error_embed, view=None)
+                if defer_first:
+                    return await interaction.edit_original_response(embed=error_embed, view=None)
+                else:
+                    return await interaction.response.edit_message(embed=error_embed, view=None)
             
             # Kayıtsız rolünü kaldır
             try:
@@ -1199,7 +1203,10 @@ class AgeVisibilityView(discord.ui.View):
                     description="Kayıt işlemi sırasında bir hata oluştu. Lütfen yetkililere bildirin.",
                     color=discord.Color.red()
                 )
-                return await interaction.response.edit_message(embed=error_embed, view=None)
+                if defer_first:
+                    return await interaction.edit_original_response(embed=error_embed, view=None)
+                else:
+                    return await interaction.response.edit_message(embed=error_embed, view=None)
             
             # İsmi değiştir
             try:
@@ -1239,7 +1246,12 @@ class AgeVisibilityView(discord.ui.View):
             success_embed.set_footer(text="Yaş görünürlüğünü ve rolleri /kayit-ayarlari komutuyla değiştirebilirsiniz.")
             
             # Mevcut embed'i güncelle (view'ı kaldır)
-            await interaction.response.edit_message(embed=success_embed, view=None)
+            if defer_first:
+                # Select menu'den geliyorsa followup.edit_message kullan
+                await interaction.edit_original_response(embed=success_embed, view=None)
+            else:
+                # Butondan geliyorsa response.edit_message kullan
+                await interaction.response.edit_message(embed=success_embed, view=None)
             
             # İstatistik veritabanına kaydet
             try:
@@ -1310,7 +1322,10 @@ class AgeVisibilityView(discord.ui.View):
                 color=discord.Color.red()
             )
             try:
-                await interaction.response.edit_message(embed=error_embed, view=None)
+                if defer_first:
+                    await interaction.edit_original_response(embed=error_embed, view=None)
+                else:
+                    await interaction.response.edit_message(embed=error_embed, view=None)
             except:
                 # Eğer zaten response edildiyse followup kullan
                 await interaction.followup.send(embed=error_embed, ephemeral=True)
