@@ -3,6 +3,8 @@ from discord import app_commands
 from discord.ext import commands
 import aiosqlite
 import re
+import asyncio
+import io
 from typing import Optional
 
 # ============ GLOBAL AYARLAR ============
@@ -457,8 +459,6 @@ class TicketControlView(discord.ui.View):
                 
                 # Ticket'ı otomatik olarak kapat (5 saniye sonra)
                 try:
-                    import asyncio
-                    
                     # Kapatılma bilgisi mesajı
                     closing_embed = discord.Embed(
                         title="🔒 Ticket Kapatılıyor",
@@ -485,7 +485,6 @@ class TicketControlView(discord.ui.View):
                             transcript = "\n".join(messages)
                             
                             # Dosya olarak kaydet
-                            import io
                             transcript_file = io.BytesIO(transcript.encode('utf-8'))
                             transcript_file.seek(0)
                             
