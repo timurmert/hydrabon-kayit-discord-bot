@@ -1024,6 +1024,92 @@ class AgeResetConfirmView(discord.ui.View):
         self.stop()
 
 
+class NotificationRoleSelectView(discord.ui.View):
+    """Bildirim rolleri seçim menüsü"""
+    
+    def __init__(self, bot: commands.Bot, member: discord.Member, name: str, age: int, show_age: bool):
+        super().__init__(timeout=60)
+        self.bot = bot
+        self.member = member
+        self.name = name
+        self.age = age
+        self.show_age = show_age
+        
+        # Rol ID'leri
+        self.notification_roles = {
+            1207713855854223391: "🎉 Etkinlik Bildirim",
+            1207713907498688512: "🎁 Çekiliş Bildirim",
+            1207713950742085643: "❓ Günün Sorusu Bildirim"
+        }
+        
+        # Select menu oluştur
+        options = []
+        for role_id, role_name in self.notification_roles.items():
+            role = member.guild.get_role(role_id)
+            if role:
+                options.append(
+                    discord.SelectOption(
+                        label=role.name,
+                        description=role_name,
+                        value=str(role_id),
+                        emoji=role_name.split()[0]  # İlk emoji'yi al
+                    )
+                )
+        
+        select = discord.ui.Select(
+            placeholder="Almak istediğiniz rolleri seçin...",
+            min_values=0,
+            max_values=len(options),
+            options=options
+        )
+        select.callback = self.select_callback
+        self.add_item(select)
+    
+    async def select_callback(self, interaction: discord.Interaction):
+        """Roller seçildiğinde"""
+        # Seçilen rol ID'lerini al
+        selected_role_ids = [int(value) for value in interaction.values]
+        
+        # Kayıt işlemini tamamla (AgeVisibilityView'ın complete_registration metodunu çağır)
+        age_view = AgeVisibilityView(self.bot, self.member, self.name, self.age)
+        age_view.show_age = self.show_age
+        await age_view.complete_registration(interaction, selected_role_ids)
+
+
+class NotificationRoleConfirmView(discord.ui.View):
+    """Bildirim rolleri onay view'ı"""
+    
+    def __init__(self, bot: commands.Bot, member: discord.Member, name: str, age: int, show_age: bool):
+        super().__init__(timeout=60)
+        self.bot = bot
+        self.member = member
+        self.name = name
+        self.age = age
+        self.show_age = show_age
+    
+    @discord.ui.button(label="Evet", style=discord.ButtonStyle.success, emoji="✅")
+    async def yes_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Evet butonuna basıldığında rol seçim menüsünü göster"""
+        embed = discord.Embed(
+            title="🔔 Bildirim Rollerini Seçin",
+            description=(
+                "Aşağıdaki menüden almak istediğiniz bildirim rollerini seçebilirsiniz.\n\n"
+                "**İpucu:** Birden fazla rol seçebilirsiniz veya hiç seçmeden geçebilirsiniz."
+            ),
+            color=discord.Color.blue()
+        )
+        
+        view = NotificationRoleSelectView(self.bot, self.member, self.name, self.age, self.show_age)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+    
+    @discord.ui.button(label="Hayır", style=discord.ButtonStyle.secondary, emoji="❌")
+    async def no_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Hayır butonuna basıldığında direkt kayıt tamamla"""
+        age_view = AgeVisibilityView(self.bot, self.member, self.name, self.age)
+        age_view.show_age = self.show_age
+        await age_view.complete_registration(interaction, selected_roles=None)
+
+
 class AgeVisibilityView(discord.ui.View):
     """Yaş görünürlüğü seçim butonu"""
     
@@ -1039,15 +1125,35 @@ class AgeVisibilityView(discord.ui.View):
     async def show_age_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Yaşı göster butonuna basıldığında"""
         self.show_age = True
-        await self.complete_registration(interaction)
+        await self.ask_notification_roles(interaction)
     
     @discord.ui.button(label="Yaşımı Gizle", style=discord.ButtonStyle.secondary, emoji="👁️")
     async def hide_age_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Yaşı gizle butonuna basıldığında"""
         self.show_age = False
-        await self.complete_registration(interaction)
+        await self.ask_notification_roles(interaction)
     
-    async def complete_registration(self, interaction: discord.Interaction):
+    async def ask_notification_roles(self, interaction: discord.Interaction):
+        """Bildirim rolleri sorgusunu göster"""
+        embed = discord.Embed(
+            title="🔔 Bildirim Rolleri",
+            description=(
+                "**Etkinliklerden, çekilişlerden ve günün sorularından haberdar olmak ister misiniz?**\n\n"
+                "Bildirim rolleri alarak:\n"
+                "• 🎉 Etkinlik duyurularından\n"
+                "• 🎁 Çekiliş duyurularından\n"
+                "• ❓ Günün sorusu etkinliklerinden\n"
+                "haberdar olabilirsiniz.\n\n"
+                "Rolleri almak ister misiniz?"
+            ),
+            color=discord.Color.blue()
+        )
+        embed.set_footer(text="İsterseniz rolleri daha sonra da alabilirsiniz")
+        
+        view = NotificationRoleConfirmView(self.bot, self.member, self.name, self.age, self.show_age)
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+    
+    async def complete_registration(self, interaction: discord.Interaction, selected_roles: list = None):
         """Kayıt işlemini tamamla"""
         await interaction.response.defer(ephemeral=True)
         
@@ -1097,14 +1203,36 @@ class AgeVisibilityView(discord.ui.View):
             except Exception as e:
                 print(f"[HATA] İsim değiştirilirken hata: {e}")
             
+            # Bildirim rollerini ver (eğer seçildiyse)
+            if selected_roles:
+                for role_id in selected_roles:
+                    try:
+                        role = guild.get_role(role_id)
+                        if role:
+                            await self.member.add_roles(role, reason="Kayıt sırasında bildirim rolü seçimi")
+                    except Exception as e:
+                        print(f"[HATA] Bildirim rolü eklenirken hata (Rol ID: {role_id}): {e}")
+            
             # Kullanıcıya başarı mesajı gönder
             visibility_status = "Görünür" if self.show_age else "Gizli"
+            
+            description = f"**İsim:** {formatted_name}\n**Yaş:** {self.age}\n**Yaş Durumu:** {visibility_status}\n**Yeni İsim:** {new_nickname}"
+            
+            if selected_roles:
+                role_names = []
+                for role_id in selected_roles:
+                    role = guild.get_role(role_id)
+                    if role:
+                        role_names.append(role.name)
+                if role_names:
+                    description += f"\n**Bildirim Rolleri:** {', '.join(role_names)}"
+            
             embed = discord.Embed(
                 title="✅ Kayıt Başarılı!",
-                description=f"**İsim:** {formatted_name}\n**Yaş:** {self.age}\n**Yaş Durumu:** {visibility_status}\n**Yeni İsim:** {new_nickname}",
+                description=description,
                 color=discord.Color.green()
             )
-            embed.set_footer(text="Yaş görünürlüğünü /kayit-ayarlari komutuyla değiştirebilirsiniz.")
+            embed.set_footer(text="Yaş görünürlüğünü ve rolleri /kayit-ayarlari komutuyla değiştirebilirsiniz.")
             
             await interaction.followup.send(embed=embed, ephemeral=True)
             
@@ -1142,9 +1270,16 @@ class AgeVisibilityView(discord.ui.View):
                         value=f"**İsim:** {formatted_name}\n**Yaş:** {self.age}\n**Yaş Durumu:** {visibility_status}\n**Yeni Nickname:** {new_nickname}",
                         inline=False
                     )
+                    
+                    # Rol değişiklikleri
+                    role_changes = f"**Verilen:** <@&{REGISTERED_ROLE_ID}>\n**Alınan:** <@&{UNREGISTERED_ROLE_ID}>"
+                    if selected_roles:
+                        role_mentions = " ".join([f"<@&{role_id}>" for role_id in selected_roles])
+                        role_changes += f"\n**Bildirim Rolleri:** {role_mentions}"
+                    
                     log_embed.add_field(
                         name="🎭 Rol Değişiklikleri",
-                        value=f"**Verilen:** <@&{REGISTERED_ROLE_ID}>\n**Alınan:** <@&{UNREGISTERED_ROLE_ID}>",
+                        value=role_changes,
                         inline=False
                     )
                     log_embed.set_thumbnail(url=self.member.display_avatar.url)
