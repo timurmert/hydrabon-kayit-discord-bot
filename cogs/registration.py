@@ -1042,38 +1042,61 @@ class NotificationRoleSelectView(discord.ui.View):
             1207713950742085643: "❓ Günün Sorusu Bildirim"
         }
         
-        # Select menu oluştur
-        options = []
-        for role_id, role_name in self.notification_roles.items():
-            role = member.guild.get_role(role_id)
-            if role:
-                options.append(
-                    discord.SelectOption(
-                        label=role.name,
-                        description=role_name,
-                        value=str(role_id),
-                        emoji=role_name.split()[0]  # İlk emoji'yi al
-                    )
-                )
-        
-        select = discord.ui.Select(
-            placeholder="Almak istediğiniz rolleri seçin...",
-            min_values=0,
-            max_values=len(options),
-            options=options
-        )
-        select.callback = self.select_callback
-        self.add_item(select)
+        # Seçilen rolleri takip et
+        self.selected_roles = set()
     
-    async def select_callback(self, interaction: discord.Interaction):
-        """Roller seçildiğinde"""
-        # Seçilen rol ID'lerini al
-        selected_role_ids = [int(value) for value in interaction.values]
+    @discord.ui.button(label="🎉 Etkinlik", style=discord.ButtonStyle.secondary, row=0)
+    async def event_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Etkinlik bildirim rolü butonuna basıldığında"""
+        role_id = 1207713855854223391
+        await self.toggle_role(interaction, role_id, button)
+    
+    @discord.ui.button(label="🎁 Çekiliş", style=discord.ButtonStyle.secondary, row=0)
+    async def giveaway_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Çekiliş bildirim rolü butonuna basıldığında"""
+        role_id = 1207713907498688512
+        await self.toggle_role(interaction, role_id, button)
+    
+    @discord.ui.button(label="❓ Günün Sorusu", style=discord.ButtonStyle.secondary, row=0)
+    async def qotd_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Günün sorusu bildirim rolü butonuna basıldığında"""
+        role_id = 1207713950742085643
+        await self.toggle_role(interaction, role_id, button)
+    
+    @discord.ui.button(label="✅ Tamamla", style=discord.ButtonStyle.success, row=1)
+    async def complete_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Tamamla butonuna basıldığında"""
+        # Seçilen rol ID'lerini listeye çevir
+        selected_role_ids = list(self.selected_roles)
         
-        # Kayıt işlemini tamamla (AgeVisibilityView'ın complete_registration metodunu çağır)
+        # Kayıt işlemini tamamla
         age_view = AgeVisibilityView(self.bot, self.member, self.name, self.age)
         age_view.show_age = self.show_age
         await age_view.complete_registration(interaction, selected_role_ids)
+    
+    async def toggle_role(self, interaction: discord.Interaction, role_id: int, button: discord.ui.Button):
+        """Rol seçimini toggle et"""
+        if role_id in self.selected_roles:
+            # Rolü kaldır
+            self.selected_roles.remove(role_id)
+            button.style = discord.ButtonStyle.secondary
+        else:
+            # Rolü ekle
+            self.selected_roles.add(role_id)
+            button.style = discord.ButtonStyle.primary
+        
+        # Embed'i güncelle
+        embed = discord.Embed(
+            title="🔔 Bildirim Rollerini Seçin",
+            description=(
+                "Aşağıdaki butonlarla almak istediğiniz bildirim rollerini seçebilirsiniz.\n"
+                "Seçtikten sonra **Tamamla** butonuna tıklayın.\n\n"
+                f"**Seçilen Roller:** {len(self.selected_roles)}/3"
+            ),
+            color=discord.Color.blue()
+        )
+        
+        await interaction.response.edit_message(embed=embed, view=self)
 
 
 class NotificationRoleConfirmView(discord.ui.View):
@@ -1093,7 +1116,9 @@ class NotificationRoleConfirmView(discord.ui.View):
         embed = discord.Embed(
             title="🔔 Bildirim Rollerini Seçin",
             description=(
-                "Aşağıdaki menüden almak istediğiniz bildirim rollerini seçebilirsiniz."
+                "Aşağıdaki butonlarla almak istediğiniz bildirim rollerini seçebilirsiniz.\n"
+                "Seçtikten sonra **Tamamla** butonuna tıklayın.\n\n"
+                "**Seçilen Roller:** 0/3"
             ),
             color=discord.Color.blue()
         )
