@@ -1137,6 +1137,14 @@ class AgeVisibilityView(discord.ui.View):
                     await log_channel.send(embed=log_embed)
             except Exception as e:
                 print(f"[HATA] Log kanalına mesaj gönderilirken hata: {type(e).__name__}: {e}")
+            
+            # Hoş geldin mesajı gönder
+            try:
+                welcome_cog = self.bot.get_cog("Welcome")
+                if welcome_cog:
+                    await welcome_cog.send_welcome_message(self.member)
+            except Exception as e:
+                print(f"[HATA] Hoş geldin mesajı gönderilirken hata: {type(e).__name__}: {e}")
                 
         except Exception as e:
             print(f"[HATA] Beklenmeyen kayıt hatası: {type(e).__name__}: {e}")
@@ -1545,6 +1553,14 @@ class Registration(commands.Cog):
                     await log_channel.send(embed=log_embed)
             except Exception as e:
                 print(f"[HATA] Log kanalına manuel kayıt mesajı gönderilirken hata: {type(e).__name__}: {e}")
+            
+            # Hoş geldin mesajı gönder
+            try:
+                welcome_cog = self.bot.get_cog("Welcome")
+                if welcome_cog:
+                    await welcome_cog.send_welcome_message(kullanici)
+            except Exception as e:
+                print(f"[HATA] Hoş geldin mesajı gönderilirken hata: {type(e).__name__}: {e}")
             
         except Exception as e:
             print(f"[HATA] Manuel kayıt hatası: {type(e).__name__}: {e}")
