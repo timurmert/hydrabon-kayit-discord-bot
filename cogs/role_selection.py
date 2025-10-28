@@ -11,6 +11,9 @@ GUNUN_SORUSU_BILDIRIM_ROLE_ID = 1207713950742085643  # Günün Sorusu Bildirim r
 
 # Kanal ID'si
 ROLE_SELECTION_CHANNEL_ID = 1432764482547089570  # Rol alma kanalı
+
+# Yetki
+OWNER_ID = 315888596437696522  # Bot sahibinin ID'si
 # =========================================
 
 
@@ -146,6 +149,13 @@ class RoleSelection(commands.Cog):
         kanal: Optional[discord.TextChannel] = None
     ):
         """Rol alma embed'ini gönderir"""
+        
+        # Owner kontrolü
+        if interaction.user.id != OWNER_ID:
+            return await interaction.response.send_message(
+                "❌ Bu komutu kullanma yetkiniz bulunmamaktadır.",
+                ephemeral=True
+            )
         
         target_channel = kanal or interaction.channel
         

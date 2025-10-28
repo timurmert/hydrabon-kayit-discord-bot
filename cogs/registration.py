@@ -17,6 +17,9 @@ TICKET_LOG_CHANNEL_ID = 1364306112022839436  # Ticket transcript log kanalı
 TICKET_CATEGORY_ID = 1364301691637338132     # Ticket kategorisi
 REQUIRED_VOICE_CHANNEL_ID = 1428811752232976566  # Kayıt için gerekli ses kanalı
 
+# Yetki
+OWNER_ID = 315888596437696522  # Bot sahibinin ID'si
+
 # =========================================
 
 # Türkçe karakter normalleştirme
@@ -1347,6 +1350,13 @@ class Registration(commands.Cog):
         kanal: Optional[discord.TextChannel] = None
     ):
         """Kayıt embed'ini gönderir"""
+        
+        # Owner kontrolü
+        if interaction.user.id != OWNER_ID:
+            return await interaction.response.send_message(
+                "❌ Bu komutu kullanma yetkiniz bulunmamaktadır.",
+                ephemeral=True
+            )
         
         target_channel = kanal or interaction.channel
         
