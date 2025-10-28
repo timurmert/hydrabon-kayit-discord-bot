@@ -1067,13 +1067,16 @@ class NotificationRoleSelectView(discord.ui.View):
     
     async def select_callback(self, interaction: discord.Interaction):
         """Roller seçildiğinde"""
+        # Önce "işleniyor" mesajı göster
+        await interaction.response.defer()
+        
         # Seçilen rol ID'lerini al
         selected_role_ids = [int(value) for value in interaction.values]
         
         # Kayıt işlemini tamamla (AgeVisibilityView'ın complete_registration metodunu çağır)
         age_view = AgeVisibilityView(self.bot, self.member, self.name, self.age)
         age_view.show_age = self.show_age
-        await age_view.complete_registration(interaction, selected_role_ids, defer_first=True)
+        await age_view.complete_registration(interaction, selected_role_ids, use_edit_original=True)
 
 
 class NotificationRoleConfirmView(discord.ui.View):
@@ -1152,11 +1155,9 @@ class AgeVisibilityView(discord.ui.View):
         view = NotificationRoleConfirmView(self.bot, self.member, self.name, self.age, self.show_age)
         await interaction.response.edit_message(embed=embed, view=view)
     
-    async def complete_registration(self, interaction: discord.Interaction, selected_roles: list = None, defer_first: bool = False):
+    async def complete_registration(self, interaction: discord.Interaction, selected_roles: list = None, use_edit_original: bool = False):
         """Kayıt işlemini tamamla"""
-        # Select menu'den geliyorsa önce defer et
-        if defer_first:
-            await interaction.response.defer(ephemeral=True)
+        # Not: Select menu'den geliyorsa defer zaten yapılmış, use_edit_original=True
         
         try:
             guild = interaction.guild
@@ -1181,7 +1182,7 @@ class AgeVisibilityView(discord.ui.View):
                     description="Kayıt işlemi sırasında bir hata oluştu. Lütfen yetkililere bildirin.",
                     color=discord.Color.red()
                 )
-                if defer_first:
+                if use_edit_original:
                     return await interaction.edit_original_response(embed=error_embed, view=None)
                 else:
                     return await interaction.response.edit_message(embed=error_embed, view=None)
@@ -1203,7 +1204,7 @@ class AgeVisibilityView(discord.ui.View):
                     description="Kayıt işlemi sırasında bir hata oluştu. Lütfen yetkililere bildirin.",
                     color=discord.Color.red()
                 )
-                if defer_first:
+                if use_edit_original:
                     return await interaction.edit_original_response(embed=error_embed, view=None)
                 else:
                     return await interaction.response.edit_message(embed=error_embed, view=None)
@@ -1246,8 +1247,8 @@ class AgeVisibilityView(discord.ui.View):
             success_embed.set_footer(text="Yaş görünürlüğünü ve rolleri /kayit-ayarlari komutuyla değiştirebilirsiniz.")
             
             # Mevcut embed'i güncelle (view'ı kaldır)
-            if defer_first:
-                # Select menu'den geliyorsa followup.edit_message kullan
+            if use_edit_original:
+                # Select menu'den geliyorsa edit_original_response kullan
                 await interaction.edit_original_response(embed=success_embed, view=None)
             else:
                 # Butondan geliyorsa response.edit_message kullan
@@ -1322,7 +1323,7 @@ class AgeVisibilityView(discord.ui.View):
                 color=discord.Color.red()
             )
             try:
-                if defer_first:
+                if use_edit_original:
                     await interaction.edit_original_response(embed=error_embed, view=None)
                 else:
                     await interaction.response.edit_message(embed=error_embed, view=None)
