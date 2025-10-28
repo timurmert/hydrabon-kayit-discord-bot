@@ -1311,6 +1311,22 @@ class RegistrationButton(discord.ui.View):
     async def support_button_callback(self, interaction: discord.Interaction):
         """Yetkili Çağır butonuna tıklandığında"""
         try:
+            member = interaction.user
+            
+            # Kullanıcının ses kanalında olup olmadığını kontrol et
+            if not member.voice or not member.voice.channel:
+                return await interaction.response.send_message(
+                    "❌ Yetkili çağırabilmek için önce <#1428811752232976566> ses kanalına katılmalısınız!",
+                    ephemeral=True
+                )
+            
+            # Kullanıcı doğru ses kanalında mı?
+            if member.voice.channel.id != REQUIRED_VOICE_CHANNEL_ID:
+                return await interaction.response.send_message(
+                    "❌ Yetkili çağırabilmek için <#1428811752232976566> ses kanalında olmalısınız!",
+                    ephemeral=True
+                )
+            
             embed = discord.Embed(
                 title="⚠️ Yetkili Çağırma",
                 description=(
