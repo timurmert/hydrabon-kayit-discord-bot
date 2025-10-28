@@ -14,7 +14,7 @@ load_dotenv()
 TOKEN = os.getenv("TOKEN")
 SERVER_BRAND = "HydRaboN" # Sunucu ismi. Bot içerisinde sunucu ismi olarak kullanılmasını istediğin isim.
 COMMAND_PREFIX = "" # Sunucu içi bot prefix'i. Not: Slash komutları kullanıldığı için bu çok da önemli değil.
-OWNER_ID = "315888596437696522" # Bot sahibinin ID'si. Yapımcı ya da bakımından sorumlu tepe kişinin.
+OWNER_ID = 315888596437696522 # Bot sahibinin ID'si. Yapımcı ya da bakımından sorumlu tepe kişinin.
 STREAM_URL = "" # Bot yayında gözüküyor kısmı için bir yönlendirme linki. Twitch veya YouTube linki olabilir.
 
 # Bot intents
