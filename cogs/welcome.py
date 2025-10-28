@@ -116,12 +116,20 @@ class Welcome(commands.Cog):
         except Exception as e:
             print(f"[HATA] Yeni üyeye rol verilirken hata: {type(e).__name__}: {e}")
         
-        # Hoş geldin mesajı gönderme
+        # NOT: Hoş geldin mesajı artık kayıt işlemi tamamlandıktan sonra gönderiliyor
+    
+    def get_welcome_message(self, member: discord.Member) -> str:
+        """Rastgele hoş geldin mesajı döndürür"""
+        return random.choice(WELCOME_MESSAGES).format(member.mention)
+    
+    async def send_welcome_message(self, member: discord.Member):
+        """Kayıt başarılı olduğunda hoş geldin mesajı gönderir"""
         try:
+            guild = member.guild
             channel = guild.get_channel(self.welcome_channel_id)
             if channel:
                 # Rastgele mesaj seç
-                message = random.choice(WELCOME_MESSAGES).format(member.mention)
+                message = self.get_welcome_message(member)
                 await channel.send(message)
             else:
                 print(f"[HATA] Hoş geldin kanalı bulunamadı! Kanal ID: {self.welcome_channel_id}")
