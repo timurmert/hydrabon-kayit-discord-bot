@@ -273,10 +273,18 @@ class TicketCloseConfirmView(discord.ui.View):
     @discord.ui.button(label="İptal", style=discord.ButtonStyle.secondary, emoji="❌")
     async def cancel_close(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Kapatma iptal edildi"""
-        await interaction.response.send_message(
-            "✅ Ticket kapatma işlemi iptal edildi.",
-            ephemeral=True
+        # Embed'i güncelle
+        embed = discord.Embed(
+            title="✅ İşlem İptal Edildi",
+            description="Ticket kapatma işlemi iptal edildi.",
+            color=discord.Color.green()
         )
+        
+        # Butonları devre dışı bırak
+        for item in self.children:
+            item.disabled = True
+        
+        await interaction.response.edit_message(embed=embed, view=self)
         self.stop()
 
 
@@ -1001,10 +1009,18 @@ class AgeResetConfirmView(discord.ui.View):
     @discord.ui.button(label="Hayır, İptal Et", style=discord.ButtonStyle.secondary, emoji="❌")
     async def cancel_reset(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Yaş sıfırlama iptal edildi"""
-        await interaction.response.send_message(
-            "✅ Yaş sıfırlama işlemi iptal edildi.",
-            ephemeral=True
+        # Embed'i güncelle
+        embed = discord.Embed(
+            title="✅ İşlem İptal Edildi",
+            description="Yaş sıfırlama işleminiz iptal edildi.",
+            color=discord.Color.green()
         )
+        
+        # Butonları devre dışı bırak
+        for item in self.children:
+            item.disabled = True
+        
+        await interaction.response.edit_message(embed=embed, view=self)
         self.stop()
 
 
@@ -1206,10 +1222,18 @@ class SupportConfirmView(discord.ui.View):
     @discord.ui.button(label="İptal", style=discord.ButtonStyle.secondary, emoji="❌")
     async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """İptal butonuna basıldığında"""
-        await interaction.response.send_message(
-            "✅ İşlem iptal edildi.",
-            ephemeral=True
+        # Embed'i güncelle
+        embed = discord.Embed(
+            title="✅ İşlem İptal Edildi",
+            description="Yetkili çağırma işleminiz iptal edildi.",
+            color=discord.Color.green()
         )
+        
+        # Butonları devre dışı bırak
+        for item in self.children:
+            item.disabled = True
+        
+        await interaction.response.edit_message(embed=embed, view=self)
         self.stop()
 
 
