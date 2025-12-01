@@ -17,7 +17,6 @@ NITRO_BOOSTER_ROLE_ID = 1030490914411511869  # Nitro Booster rolü (korunur)
 LOG_CHANNEL_ID = 1431398643273039934         # Genel log kanalı
 TICKET_LOG_CHANNEL_ID = 1364306112022839436  # Ticket transcript log kanalı
 TICKET_CATEGORY_ID = 1364301691637338132     # Ticket kategorisi
-REQUIRED_VOICE_CHANNEL_ID = 1428811752232976566  # Kayıt için gerekli ses kanalı
 
 # Yetki
 OWNER_ID = 315888596437696522  # Bot sahibinin ID'si
@@ -1727,22 +1726,7 @@ class RegistrationButton(discord.ui.View):
         try:
             member = interaction.user
             
-            # Kullanıcının ses kanalında olup olmadığını kontrol et
-            # Kullanıcı herhangi bir ses kanalında mı?
-            if not member.voice or not member.voice.channel:
-                return await interaction.response.send_message(
-                    "❌ Kayıt olabilmek için önce <#1428811752232976566> ses kanalına katılmalısınız!",
-                    ephemeral=True
-                )
-            
-            # Kullanıcı doğru ses kanalında mı?
-            if member.voice.channel.id != REQUIRED_VOICE_CHANNEL_ID:
-                return await interaction.response.send_message(
-                    "❌ Kayıt olabilmek için <#1428811752232976566> ses kanalında olmalısınız!",
-                    ephemeral=True
-                )
-            
-            # Ses kanalı kontrolü geçtikten sonra hesap yaşı kontrolü (14 gün)
+            # Hesap yaşı kontrolü (14 gün)
             account_age = discord.utils.utcnow() - member.created_at
             if account_age.days < 14:
                 # Hesap 14 günden yeni - Manuel kayıt için ticket açmaya yönlendir
@@ -1782,20 +1766,6 @@ class RegistrationButton(discord.ui.View):
         """Yetkili Çağır butonuna tıklandığında"""
         try:
             member = interaction.user
-            
-            # Kullanıcının ses kanalında olup olmadığını kontrol et
-            if not member.voice or not member.voice.channel:
-                return await interaction.response.send_message(
-                    "❌ Yetkili çağırabilmek için önce <#1428811752232976566> ses kanalına katılmalısınız!",
-                    ephemeral=True
-                )
-            
-            # Kullanıcı doğru ses kanalında mı?
-            if member.voice.channel.id != REQUIRED_VOICE_CHANNEL_ID:
-                return await interaction.response.send_message(
-                    "❌ Yetkili çağırabilmek için <#1428811752232976566> ses kanalında olmalısınız!",
-                    ephemeral=True
-                )
             
             embed = discord.Embed(
                 title="⚠️ Yetkili Çağırma",

@@ -22,7 +22,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 intents.presences = True
-intents.voice_states = True  # Ses kanalı için gerekli
+intents.voice_states = False  # Ses kanalı devre dışı
 
 bot = commands.Bot(command_prefix=COMMAND_PREFIX, intents=intents)
 
@@ -59,61 +59,6 @@ async def on_ready():
         print(f"✅ {len(synced)} global komut senkronize edildi.")
     except Exception as e:
         print(f"❌ Slash komut senkronizasyon hatası: {e}")
-    
-    # Ses kanalına bağlan
-    VOICE_CHANNEL_ID = 1428811752232976566
-    try:
-        # Botun bağlı olduğu voice client var mı kontrol et
-        if bot.voice_clients:
-            print(f"🎤 Bot zaten bir ses kanalında.")
-        else:
-            # Ses kanalını bul
-            voice_channel = None
-            for guild in bot.guilds:
-                channel = guild.get_channel(VOICE_CHANNEL_ID)
-                if channel and isinstance(channel, discord.VoiceChannel):
-                    voice_channel = channel
-                    break
-            
-            if voice_channel:
-                await voice_channel.connect()
-                print(f"🎤 Bot ses kanalına bağlandı: {voice_channel.name} ({voice_channel.id})")
-            else:
-                print(f"[HATA] Ses kanalı bulunamadı! Kanal ID: {VOICE_CHANNEL_ID}")
-    except discord.ClientException as e:
-        print(f"[HATA] Bot zaten bir ses kanalına bağlı: {e}")
-    except Exception as e:
-        print(f"[HATA] Ses kanalına bağlanırken hata: {type(e).__name__}: {e}")
-
-@bot.event
-async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
-    """Ses durumu değiştiğinde çalışır - Bot ses kanalından atılırsa tekrar bağlanır"""
-    VOICE_CHANNEL_ID = 1428811752232976566
-    
-    # Sadece bot için kontrol et
-    if member.id != bot.user.id:
-        return
-    
-    # Bot bir kanaldan ayrıldı mı?
-    if before.channel and not after.channel:
-        try:
-            # Ses kanalını bul
-            voice_channel = None
-            for guild in bot.guilds:
-                channel = guild.get_channel(VOICE_CHANNEL_ID)
-                if channel and isinstance(channel, discord.VoiceChannel):
-                    voice_channel = channel
-                    break
-            
-            if voice_channel:
-                # Kısa bir bekleme süresi ekle
-                import asyncio
-                await asyncio.sleep(2)
-                await voice_channel.connect()
-            else:
-                print(f"[HATA] {voice_channel.name} ses kanalı bulunamadı! Kanal ID: {VOICE_CHANNEL_ID}")
-        except Exception as e:
-            print(f"[HATA] {voice_channel.name} ses kanalına tekrar bağlanırken hata: {type(e).__name__}: {e}")
 
 # ==== ADMIN GROUP ====
 admin_group = app_commands.Group(
