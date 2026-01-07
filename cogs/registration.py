@@ -17,6 +17,7 @@ NITRO_BOOSTER_ROLE_ID = 1030490914411511869  # Nitro Booster rolü (korunur)
 LOG_CHANNEL_ID = 1431398643273039934         # Genel log kanalı
 TICKET_LOG_CHANNEL_ID = 1364306112022839436  # Ticket transcript log kanalı
 TICKET_CATEGORY_ID = 1364301691637338132     # Ticket kategorisi
+ROLE_SELECTION_CHANNEL_ID = 1432764482547089570  # Rol alma kanalı
 
 # Yetki
 OWNER_ID = 315888596437696522  # Bot sahibinin ID'si
@@ -451,6 +452,44 @@ class TicketControlView(discord.ui.View):
                 except Exception as e:
                     print(f"[HATA] Hoş geldin mesajı gönderilirken hata: {type(e).__name__}: {e}")
                 
+                # Kullanıcıya rol seçimi bildirimi gönder
+                try:
+                    role_selection_channel = guild.get_channel(ROLE_SELECTION_CHANNEL_ID)
+                    role_notification_embed = discord.Embed(
+                        title="✅ Kaydınız Onaylandı!",
+                        description=(
+                            f"Merhaba {self.member.mention}! 🎉\n\n"
+                            f"**Kaydınız başarıyla onaylandı!**\n\n"
+                            f"Artık sunucumuza tam erişiminiz var. İsterseniz size özel bildirim rollerini alabilirsiniz:\n\n"
+                            f"🎉 **Etkinlik Bildirim** - Sunucu etkinliklerinden haberdar olun\n"
+                            f"🎁 **Çekiliş Bildirim** - Çekiliş duyurularından haberdar olun\n"
+                            f"❓ **Günün Sorusu Bildirim** - Günlük soru etkinliklerinden haberdar olun\n\n"
+                        ),
+                        color=discord.Color.green()
+                    )
+                    
+                    if role_selection_channel:
+                        role_notification_embed.add_field(
+                            name="📍 Rol Alma Kanalı",
+                            value=f"{role_selection_channel.mention} kanalından istediğiniz rolleri alabilirsiniz!",
+                            inline=False
+                        )
+                    
+                    role_notification_embed.set_footer(text="HydRaboN Kayıt Sistemi")
+                    role_notification_embed.set_thumbnail(url=self.member.display_avatar.url)
+                    
+                    # Ticket kanalına rol bildirim mesajı gönder
+                    await interaction.channel.send(embed=role_notification_embed)
+                    
+                    # Kullanıcıya DM olarak da gönder (opsiyonel)
+                    try:
+                        await self.member.send(embed=role_notification_embed)
+                    except discord.Forbidden:
+                        # Kullanıcı DM kapalı ise hata verme
+                        print(f"[BİLGİ] {self.member} kullanıcısına DM gönderilemedi (DM kapalı)")
+                except Exception as e:
+                    print(f"[HATA] Rol seçimi bildirimi gönderilirken hata: {type(e).__name__}: {e}")
+                
                 # Manuel kayıt butonunu devre dışı bırak
                 button.disabled = True
                 button.label = "Kayıt Tamamlandı"
@@ -691,6 +730,17 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
                     "Yetkililere bildirim gönderildi. Lütfen bekleyin."
                 ),
                 color=discord.Color.orange()
+            )
+            embed.add_field(
+                name="🎭 Kayıt Sonrası Alınabilecek Roller",
+                value=(
+                    "Kaydınız onaylandıktan sonra aşağıdaki rolleri alabilirsiniz:\n\n"
+                    "🎉 **Etkinlik Bildirim** - Sunucu etkinliklerinden haberdar olun\n"
+                    "🎁 **Çekiliş Bildirim** - Çekiliş duyurularından haberdar olun\n"
+                    "❓ **Günün Sorusu Bildirim** - Günlük soru etkinliklerinden haberdar olun\n\n"
+                    f"💡 Kaydınız onaylandıktan sonra <#{ROLE_SELECTION_CHANNEL_ID}> kanalından rolleri alabilirsiniz."
+                ),
+                inline=False
             )
             embed.set_thumbnail(url=interaction.user.display_avatar.url)
             embed.set_footer(text="Kayıt Destek Sistemi")
