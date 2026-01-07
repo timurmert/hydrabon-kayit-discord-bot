@@ -2397,6 +2397,97 @@ class Registration(commands.Cog):
                 "❌ Beklenmeyen bir hata oluştu.",
                 ephemeral=True
             )
+    
+    @app_commands.command(
+        name="isim-kontrol",
+        description="Veritabanında isim kontrolü yapar"
+    )
+    @app_commands.default_permissions(administrator=True)
+    async def check_name(
+        self,
+        interaction: discord.Interaction,
+        isim: str
+    ):
+        """Veritabanında ismin var olup olmadığını kontrol eder"""
+        
+        # Yönetici kontrolü (güvenlik için)
+        if not interaction.user.guild_permissions.administrator:
+            return await interaction.response.send_message(
+                "❌ Bu komutu kullanma yetkiniz bulunmamaktadır.",
+                ephemeral=True
+            )
+        
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            # İsmi normalleştir
+            normalized_name = normalize_turkish(isim.strip())
+            name_parts = normalized_name.split()
+            
+            # Veritabanında kontrol
+            results = {}
+            async with aiosqlite.connect("names.db") as db:
+                for part in name_parts:
+                    cursor = await db.execute(
+                        "SELECT name FROM names WHERE name_norm_tr = ? LIMIT 1",
+                        (part,)
+                    )
+                    result = await cursor.fetchone()
+                    results[part] = result is not None
+            
+            # Sonuç embed'i oluştur
+            all_found = all(results.values())
+            
+            embed = discord.Embed(
+                title="🔍 İsim Kontrol Sonucu",
+                color=discord.Color.green() if all_found else discord.Color.red()
+            )
+            
+            embed.add_field(
+                name="📝 Kontrol Edilen İsim",
+                value=f"`{isim.strip()}`",
+                inline=False
+            )
+            
+            # Her bir isim parçası için sonuç
+            if len(name_parts) > 1:
+                parts_status = []
+                for part, found in results.items():
+                    status = "✅ Bulundu" if found else "❌ Bulunamadı"
+                    parts_status.append(f"**{turkish_title_case(part)}**: {status}")
+                
+                embed.add_field(
+                    name="🔎 Parçalar",
+                    value="\n".join(parts_status),
+                    inline=False
+                )
+            
+            # Genel durum
+            if all_found:
+                embed.add_field(
+                    name="✅ Durum",
+                    value="Tüm isim parçaları veritabanında mevcut.",
+                    inline=False
+                )
+            else:
+                missing_parts = [turkish_title_case(part) for part, found in results.items() if not found]
+                embed.add_field(
+                    name="❌ Durum",
+                    value=f"Şu parçalar veritabanında bulunamadı: {', '.join(missing_parts)}",
+                    inline=False
+                )
+            
+            embed.set_footer(text=f"Kontrol eden: {interaction.user.name}")
+            embed.timestamp = discord.utils.utcnow()
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            print(f"[HATA] İsim kontrol hatası: {type(e).__name__}: {e}")
+            await interaction.followup.send(
+                "❌ İsim kontrolü sırasında bir hata oluştu.",
+                ephemeral=True
+            )
 
 
 async def setup(bot: commands.Bot):
