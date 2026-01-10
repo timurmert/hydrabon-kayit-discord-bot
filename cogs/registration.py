@@ -130,7 +130,8 @@ class RegistrationModal(discord.ui.Modal, title="Kayıt Formu"):
         embed.set_footer(text="Lütfen aşağıdaki butonlardan birini seçiniz")
         
         view = AgeVisibilityView(self.bot, member, name, age)
-        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+        message = await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+        view.message = message
     
     async def check_name_in_database(self, name: str) -> bool:
         """İsmin veritabanında olup olmadığını kontrol eder"""
@@ -181,6 +182,17 @@ class TicketCloseConfirmView(discord.ui.View):
     
     def __init__(self):
         super().__init__(timeout=30)  # 30 saniye timeout
+        self.message = None
+    
+    async def on_timeout(self):
+        """Timeout olduğunda butonları devre dışı bırak"""
+        if self.message:
+            try:
+                for item in self.children:
+                    item.disabled = True
+                await self.message.edit(view=self)
+            except:
+                pass
     
     @discord.ui.button(label="Evet, Kapat", style=discord.ButtonStyle.danger, emoji="✅")
     async def confirm_close(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -566,6 +578,7 @@ class TicketControlView(discord.ui.View):
             
             view = TicketCloseConfirmView()
             await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+            view.message = await interaction.original_response()
             
         except Exception as e:
             print(f"[HATA] Ticket kapatma butonu hatası: {type(e).__name__}: {e}")
@@ -1264,6 +1277,17 @@ class AgeResetConfirmView(discord.ui.View):
         self.bot = bot
         self.current_name = current_name
         self.current_age = current_age
+        self.message = None
+    
+    async def on_timeout(self):
+        """Timeout olduğunda butonları devre dışı bırak"""
+        if self.message:
+            try:
+                for item in self.children:
+                    item.disabled = True
+                await self.message.edit(view=self)
+            except:
+                pass
     
     @discord.ui.button(label="Evet, Ticket Aç", style=discord.ButtonStyle.danger, emoji="✅")
     async def confirm_reset(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -1306,6 +1330,7 @@ class NotificationRoleSelectView(discord.ui.View):
         super().__init__(timeout=60)
         self.bot = bot
         self.member = member
+        self.message = None
         self.name = name
         self.age = age
         self.show_age = show_age
@@ -1319,6 +1344,16 @@ class NotificationRoleSelectView(discord.ui.View):
         
         # Seçilen rolleri takip et
         self.selected_roles = set()
+    
+    async def on_timeout(self):
+        """Timeout olduğunda butonları devre dışı bırak"""
+        if self.message:
+            try:
+                for item in self.children:
+                    item.disabled = True
+                await self.message.edit(view=self)
+            except:
+                pass
     
     @discord.ui.button(label="🎉 Etkinlik", style=discord.ButtonStyle.secondary, row=0)
     async def event_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -1384,6 +1419,17 @@ class NotificationRoleConfirmView(discord.ui.View):
         self.name = name
         self.age = age
         self.show_age = show_age
+        self.message = None
+    
+    async def on_timeout(self):
+        """Timeout olduğunda butonları devre dışı bırak"""
+        if self.message:
+            try:
+                for item in self.children:
+                    item.disabled = True
+                await self.message.edit(view=self)
+            except:
+                pass
     
     @discord.ui.button(label="Evet", style=discord.ButtonStyle.success, emoji="✅")
     async def yes_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -1399,6 +1445,7 @@ class NotificationRoleConfirmView(discord.ui.View):
         )
         
         view = NotificationRoleSelectView(self.bot, self.member, self.name, self.age, self.show_age)
+        view.message = interaction.message
         await interaction.response.edit_message(embed=embed, view=view)
     
     @discord.ui.button(label="Hayır", style=discord.ButtonStyle.secondary, emoji="❌")
@@ -1419,6 +1466,17 @@ class AgeVisibilityView(discord.ui.View):
         self.name = name
         self.age = age
         self.show_age = None  # Kullanıcının seçimi
+        self.message = None
+    
+    async def on_timeout(self):
+        """Timeout olduğunda butonları devre dışı bırak"""
+        if self.message:
+            try:
+                for item in self.children:
+                    item.disabled = True
+                await self.message.edit(view=self)
+            except:
+                pass
     
     @discord.ui.button(label="Yaşımı Göster", style=discord.ButtonStyle.success, emoji="✅")
     async def show_age_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -1450,6 +1508,7 @@ class AgeVisibilityView(discord.ui.View):
         embed.set_footer(text="İsterseniz rolleri daha sonra da alabilirsiniz")
         
         view = NotificationRoleConfirmView(self.bot, self.member, self.name, self.age, self.show_age)
+        view.message = interaction.message
         await interaction.response.edit_message(embed=embed, view=view)
     
     async def complete_registration(self, interaction: discord.Interaction, selected_roles: list = None):
@@ -1623,6 +1682,17 @@ class NewAccountSupportView(discord.ui.View):
     def __init__(self, bot: commands.Bot):
         super().__init__(timeout=60)  # 60 saniye timeout
         self.bot = bot
+        self.message = None
+    
+    async def on_timeout(self):
+        """Timeout olduğunda butonları devre dışı bırak"""
+        if self.message:
+            try:
+                for item in self.children:
+                    item.disabled = True
+                await self.message.edit(view=self)
+            except:
+                pass
     
     @discord.ui.button(label="Yetkili Çağır", style=discord.ButtonStyle.danger, emoji="⚠️")
     async def support_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -1647,6 +1717,17 @@ class SupportConfirmView(discord.ui.View):
     def __init__(self, bot: commands.Bot):
         super().__init__(timeout=60)  # 60 saniye timeout
         self.bot = bot
+        self.message = None
+    
+    async def on_timeout(self):
+        """Timeout olduğunda butonları devre dışı bırak"""
+        if self.message:
+            try:
+                for item in self.children:
+                    item.disabled = True
+                await self.message.edit(view=self)
+            except:
+                pass
     
     @discord.ui.button(label="Evet", style=discord.ButtonStyle.danger, emoji="✅")
     async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -1747,7 +1828,9 @@ class RegistrationButton(discord.ui.View):
                 embed.set_footer(text=f"Hesap Oluşturulma: {member.created_at.strftime('%d.%m.%Y')}")
                 
                 view = NewAccountSupportView(self.bot)
-                return await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+                await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+                view.message = await interaction.original_response()
+                return
             
             # Tüm kontroller geçti - Kayıt modal'ını aç
             modal = RegistrationModal(self.bot)
@@ -1779,6 +1862,7 @@ class RegistrationButton(discord.ui.View):
             
             view = SupportConfirmView(self.bot)
             await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+            view.message = await interaction.original_response()
             
         except Exception as e:
             print(f"[HATA] Destek butonu hatası: {type(e).__name__}: {e}")
@@ -2282,6 +2366,7 @@ class Registration(commands.Cog):
                         
                         confirm_view = AgeResetConfirmView(self.bot, self.name, self.age)
                         await interaction.response.send_message(embed=embed, view=confirm_view, ephemeral=True)
+                        confirm_view.message = await interaction.original_response()
                         
                     except Exception as e:
                         print(f"[HATA] Yaş sıfırlama onay mesajı gösterilirken hata: {e}")
