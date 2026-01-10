@@ -12,6 +12,8 @@ from typing import Optional
 UNREGISTERED_ROLE_ID = 1428496119213588521  # Kayıtsız üye rolü
 REGISTERED_ROLE_ID = 1029089740022095973    # Kayıtlı üye rolü
 NITRO_BOOSTER_ROLE_ID = 1030490914411511869  # Nitro Booster rolü (korunur)
+YK_UYELERI_ROLE_ID = 1029089731314720798  # YK Üyeleri rolü - ID'yi güncelleyin
+YK_ADAYLARI_ROLE_ID = 1412843482980290711  # YK Adayları rolü - ID'yi güncelleyin
 
 # Kanal ID'leri
 LOG_CHANNEL_ID = 1431398643273039934         # Genel log kanalı
@@ -672,6 +674,27 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
                 )
             }
             
+            # YK Üyeleri ve YK Adayları rollerini ekle
+            if YK_UYELERI_ROLE_ID != 0:
+                yk_uyeleri_role = interaction.guild.get_role(YK_UYELERI_ROLE_ID)
+                if yk_uyeleri_role:
+                    overwrites[yk_uyeleri_role] = discord.PermissionOverwrite(
+                        read_messages=True,
+                        send_messages=True,
+                        attach_files=True,
+                        embed_links=True
+                    )
+            
+            if YK_ADAYLARI_ROLE_ID != 0:
+                yk_adaylari_role = interaction.guild.get_role(YK_ADAYLARI_ROLE_ID)
+                if yk_adaylari_role:
+                    overwrites[yk_adaylari_role] = discord.PermissionOverwrite(
+                        read_messages=True,
+                        send_messages=True,
+                        attach_files=True,
+                        embed_links=True
+                    )
+            
             # Ticket kanalı oluştur
             ticket_channel = await category.create_text_channel(
                 name=ticket_name,
@@ -1155,6 +1178,27 @@ class AgeResetTicketModal(discord.ui.Modal, title="Yaş Sıfırlama Talebi"):
                     manage_channels=True
                 )
             }
+            
+            # YK Üyeleri ve YK Adayları rollerini ekle
+            if YK_UYELERI_ROLE_ID != 0:
+                yk_uyeleri_role = interaction.guild.get_role(YK_UYELERI_ROLE_ID)
+                if yk_uyeleri_role:
+                    overwrites[yk_uyeleri_role] = discord.PermissionOverwrite(
+                        read_messages=True,
+                        send_messages=True,
+                        attach_files=True,
+                        embed_links=True
+                    )
+            
+            if YK_ADAYLARI_ROLE_ID != 0:
+                yk_adaylari_role = interaction.guild.get_role(YK_ADAYLARI_ROLE_ID)
+                if yk_adaylari_role:
+                    overwrites[yk_adaylari_role] = discord.PermissionOverwrite(
+                        read_messages=True,
+                        send_messages=True,
+                        attach_files=True,
+                        embed_links=True
+                    )
             
             # Ticket kanalı oluştur
             ticket_channel = await category.create_text_channel(
