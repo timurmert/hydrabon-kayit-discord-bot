@@ -653,6 +653,18 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
                     ephemeral=True
                 )
             
+            # Kullanıcının zaten bir açık ticket'ı olup olmadığını kontrol et
+            for channel in category.channels:
+                if isinstance(channel, discord.TextChannel):
+                    # Kullanıcının bu kanala erişimi varsa, zaten bir ticket'ı var demektir
+                    permissions = channel.permissions_for(interaction.user)
+                    if permissions.read_messages:
+                        return await interaction.followup.send(
+                            f"❌ Zaten açık bir destek talebiniz bulunmaktadır: {channel.mention}\n"
+                            "Lütfen mevcut talebinizi tamamlayın veya kapatın.",
+                            ephemeral=True
+                        )
+            
             # Ticket kanalı adı
             ticket_name = f"kayıt-{interaction.user.name}-{interaction.user.discriminator}"
             
@@ -1136,6 +1148,18 @@ class AgeResetTicketModal(discord.ui.Modal, title="Yaş Sıfırlama Talebi"):
                     "❌ Sistem hatası: Ticket kategorisi bulunamadı. Lütfen yetkililere bildirin.",
                     ephemeral=True
                 )
+            
+            # Kullanıcının zaten bir açık ticket'ı olup olmadığını kontrol et
+            for channel in category.channels:
+                if isinstance(channel, discord.TextChannel):
+                    # Kullanıcının bu kanala erişimi varsa, zaten bir ticket'ı var demektir
+                    permissions = channel.permissions_for(interaction.user)
+                    if permissions.read_messages:
+                        return await interaction.followup.send(
+                            f"❌ Zaten açık bir destek talebiniz bulunmaktadır: {channel.mention}\n"
+                            "Lütfen mevcut talebinizi tamamlayın veya kapatın.",
+                            ephemeral=True
+                        )
             
             # Ticket kanalı adı
             ticket_name = f"yaş-sıfırlama-{interaction.user.name}-{interaction.user.discriminator}"
