@@ -1836,7 +1836,7 @@ class Registration(commands.Cog):
             ),
             color=discord.Color.blue()
         )
-        embed.set_thumbnail(url=interaction.guild.icon.url if interaction.guild.icon else None)
+        embed.set_thumbnail(url="https://media.discordapp.net/attachments/1362825668965957845/1459650495890329833/a2.png?ex=69640cf5&is=6962bb75&hm=0690e7e22e7f4e78cd5298e00eeb298d8cfae9668c88a92764bd9b44320b39a3&=&format=webp&quality=lossless")
         embed.set_footer(text=f"{interaction.guild.name} - Kayıt Sistemi")
         
         # Butonu ekle
