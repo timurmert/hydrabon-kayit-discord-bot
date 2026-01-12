@@ -1054,7 +1054,9 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
                 if isinstance(channel, discord.TextChannel):
                     # Kullanıcının bu kanala erişimi varsa, zaten bir ticket'ı var demektir
                     permissions = channel.permissions_for(interaction.user)
-                    if permissions.read_messages:
+                    if channel.id == 1364306040727933017 and channel.id == 1364306112022839436:
+                        pass
+                    elif permissions.read_messages:
                         return await interaction.followup.send(
                             f"❌ Zaten açık bir destek talebiniz bulunmaktadır: {channel.mention}\n"
                             "Lütfen mevcut talebinizi tamamlayın veya kapatın.",
