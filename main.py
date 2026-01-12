@@ -17,6 +17,9 @@ COMMAND_PREFIX = "" # Sunucu içi bot prefix'i. Not: Slash komutları kullanıld
 OWNER_ID = 315888596437696522 # Bot sahibinin ID'si. Yapımcı ya da bakımından sorumlu tepe kişinin.
 STREAM_URL = "https://www.twitch.tv/mrpresidentnotsjanymore" # Bot yayında gözüküyor kısmı için bir yönlendirme linki. Twitch veya YouTube linki olabilir.
 
+# NOT: Kayıt log kanalı ID'si cogs/registration.py dosyasında REGISTRATION_LOG_CHANNEL_ID olarak ayarlanmıştır.
+# Kayıt denemesi loglarının gönderileceği kanalı değiştirmek için cogs/registration.py dosyasını düzenleyin.
+
 # Bot intents
 intents = discord.Intents.default()
 intents.message_content = True
