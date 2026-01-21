@@ -597,14 +597,13 @@ class ManualRegistrationModal(discord.ui.Modal, title="Manuel Kayıt Formu"):
                 print(f"[HATA] Hoş geldin mesajı gönderilirken hata: {type(e).__name__}: {e}")
             
             # Manuel kayıt butonunu devre dışı bırak
-            for item in self.ticket_view.children:
-                if isinstance(item, discord.ui.Button) and item.custom_id == "manual_register_button":
-                    item.disabled = True
-                    item.label = "Kayıt Tamamlandı"
-            
-            # Orijinal mesajı güncelle
             try:
-                # interaction.message orijinal ticket mesajı değil, bu yüzden channel'daki ilk mesajı bulup güncelliyoruz
+                for item in self.ticket_view.children:
+                    if isinstance(item, discord.ui.Button) and item.custom_id == "manual_register_button":
+                        item.disabled = True
+                        item.label = "Kayıt Tamamlandı"
+                
+                # Orijinal ticket mesajını güncelle
                 async for message in interaction.channel.history(limit=10, oldest_first=True):
                     if message.author == self.bot.user and len(message.embeds) > 0:
                         if message.embeds[0].title == "🎫 Kayıt Destek Talebi":
@@ -613,9 +612,42 @@ class ManualRegistrationModal(discord.ui.Modal, title="Manuel Kayıt Formu"):
             except Exception as e:
                 print(f"[HATA] Ticket mesajı güncellenirken hata: {type(e).__name__}: {e}")
             
-            # Ticket'ı otomatik olarak kapat (5 saniye sonra)
+            # Kullanıcıya DM ile rol seçimi bildirimi gönder
             try:
-                # Kapatılma bilgisi mesajı
+                role_selection_channel = guild.get_channel(ROLE_SELECTION_CHANNEL_ID)
+                role_notification_embed = discord.Embed(
+                    title="✅ Kaydınız Onaylandı!",
+                    description=(
+                        f"Merhaba {self.member.mention}! 🎉\n\n"
+                        f"**Kaydınız başarıyla onaylandı!**\n\n"
+                        f"Artık sunucumuza tam erişiminiz var. İsterseniz size özel bildirim rollerini alabilirsiniz:\n\n"
+                        f"🎉 **Etkinlik Bildirim** - Sunucu etkinliklerinden haberdar olun\n"
+                        f"🎁 **Çekiliş Bildirim** - Çekiliş duyurularından haberdar olun\n"
+                        f"❓ **Günün Sorusu Bildirim** - Günlük soru etkinliklerinden haberdar olun"
+                    ),
+                    color=discord.Color.green()
+                )
+                
+                if role_selection_channel:
+                    role_notification_embed.add_field(
+                        name="📍 Rol Alma Kanalı",
+                        value=f"{role_selection_channel.mention} kanalından istediğiniz rolleri alabilirsiniz!",
+                        inline=False
+                    )
+                
+                role_notification_embed.set_footer(text="HydRaboN Kayıt Sistemi")
+                role_notification_embed.set_thumbnail(url=self.member.display_avatar.url)
+                
+                # Kullanıcıya DM gönder
+                try:
+                    await self.member.send(embed=role_notification_embed)
+                except discord.Forbidden:
+                    print(f"[BİLGİ] {self.member} kullanıcısına DM gönderilemedi (DM kapalı)")
+            except Exception as e:
+                print(f"[HATA] Rol seçimi bildirimi gönderilirken hata: {type(e).__name__}: {e}")
+            
+            # Ticket kapatma işlemini başlat
+            try:
                 closing_embed = discord.Embed(
                     title="🔒 Ticket Kapatılıyor",
                     description="Kayıt işlemi başarıyla tamamlandı. Bu ticket 5 saniye içinde kapatılacak.",
@@ -630,24 +662,22 @@ class ManualRegistrationModal(discord.ui.Modal, title="Manuel Kayıt Formu"):
                 try:
                     log_channel = guild.get_channel(TICKET_LOG_CHANNEL_ID)
                     if log_channel:
-                        # Tüm mesajları topla
+                        # Mesajları topla
                         messages = []
-                        async for message in interaction.channel.history(limit=None, oldest_first=True):
-                            timestamp = message.created_at.strftime("%Y-%m-%d %H:%M:%S")
-                            content = message.content or "[Embed/Attachment]"
-                            messages.append(f"[{timestamp}] {message.author}: {content}")
+                        async for msg in interaction.channel.history(limit=None, oldest_first=True):
+                            timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
+                            content = msg.content or "[Embed/Attachment]"
+                            messages.append(f"[{timestamp}] {msg.author}: {content}")
                         
-                        # Transcript oluştur
+                        # Transcript oluştur ve kaydet
                         transcript = "\n".join(messages)
-                        
-                        # Dosya olarak kaydet
                         transcript_file = io.BytesIO(transcript.encode('utf-8'))
                         transcript_file.seek(0)
                         
-                        # Log embed'i
+                        # Log embed
                         transcript_embed = discord.Embed(
                             title="📝 Ticket Kapatıldı (Otomatik)",
-                            description=f"**Ticket:** {interaction.channel.name}\n**Kapatma Sebebi:** Manuel kayıt tamamlandı",
+                            description=f"**Ticket:** {interaction.channel.name}\n**Sebep:** Manuel kayıt tamamlandı",
                             color=discord.Color.red(),
                             timestamp=discord.utils.utcnow()
                         )
@@ -669,113 +699,11 @@ class ManualRegistrationModal(discord.ui.Modal, title="Manuel Kayıt Formu"):
                 except Exception as e:
                     print(f"[HATA] Ticket transcript kaydedilirken hata: {type(e).__name__}: {e}")
                 
-                # Kullanıcıya rol seçimi bildirimi gönder
-                try:
-                    role_selection_channel = guild.get_channel(ROLE_SELECTION_CHANNEL_ID)
-                    role_notification_embed = discord.Embed(
-                        title="✅ Kaydınız Onaylandı!",
-                        description=(
-                            f"Merhaba {self.member.mention}! 🎉\n\n"
-                            f"**Kaydınız başarıyla onaylandı!**\n\n"
-                            f"Artık sunucumuza tam erişiminiz var. İsterseniz size özel bildirim rollerini alabilirsiniz:\n\n"
-                            f"🎉 **Etkinlik Bildirim** - Sunucu etkinliklerinden haberdar olun\n"
-                            f"🎁 **Çekiliş Bildirim** - Çekiliş duyurularından haberdar olun\n"
-                            f"❓ **Günün Sorusu Bildirim** - Günlük soru etkinliklerinden haberdar olun\n\n"
-                        ),
-                        color=discord.Color.green()
-                    )
-                    
-                    if role_selection_channel:
-                        role_notification_embed.add_field(
-                            name="📍 Rol Alma Kanalı",
-                            value=f"{role_selection_channel.mention} kanalından istediğiniz rolleri alabilirsiniz!",
-                            inline=False
-                        )
-                    
-                    role_notification_embed.set_footer(text="HydRaboN Kayıt Sistemi")
-                    role_notification_embed.set_thumbnail(url=self.member.display_avatar.url)
-                    
-                    # Ticket kanalına rol bildirim mesajı gönder
-                    await interaction.channel.send(embed=role_notification_embed)
-                    
-                    # Kullanıcıya DM olarak da gönder (opsiyonel)
-                    try:
-                        await self.member.send(embed=role_notification_embed)
-                    except discord.Forbidden:
-                        # Kullanıcı DM kapalı ise hata verme
-                        print(f"[BİLGİ] {self.member} kullanıcısına DM gönderilemedi (DM kapalı)")
-                except Exception as e:
-                    print(f"[HATA] Rol seçimi bildirimi gönderilirken hata: {type(e).__name__}: {e}")
-                
-                # Manuel kayıt butonunu devre dışı bırak
-                button.disabled = True
-                button.label = "Kayıt Tamamlandı"
-                await interaction.message.edit(view=self)
-                
-                # Ticket'ı otomatik olarak kapat (5 saniye sonra)
-                try:
-                    # Kapatılma bilgisi mesajı
-                    closing_embed = discord.Embed(
-                        title="🔒 Ticket Kapatılıyor",
-                        description="Kayıt işlemi başarıyla tamamlandı. Bu ticket 5 saniye içinde kapatılacak.",
-                        color=discord.Color.orange()
-                    )
-                    await interaction.channel.send(embed=closing_embed)
-                    
-                    # 5 saniye bekle
-                    await asyncio.sleep(5)
-                    
-                    # Ticket log kanalına transcript gönder
-                    try:
-                        log_channel = guild.get_channel(TICKET_LOG_CHANNEL_ID)
-                        if log_channel:
-                            # Tüm mesajları topla
-                            messages = []
-                            async for message in interaction.channel.history(limit=None, oldest_first=True):
-                                timestamp = message.created_at.strftime("%Y-%m-%d %H:%M:%S")
-                                content = message.content or "[Embed/Attachment]"
-                                messages.append(f"[{timestamp}] {message.author}: {content}")
-                            
-                            # Transcript oluştur
-                            transcript = "\n".join(messages)
-                            
-                            # Dosya olarak kaydet
-                            transcript_file = io.BytesIO(transcript.encode('utf-8'))
-                            transcript_file.seek(0)
-                            
-                            # Log embed'i
-                            transcript_embed = discord.Embed(
-                                title="📝 Ticket Kapatıldı (Otomatik)",
-                                description=f"**Ticket:** {interaction.channel.name}\n**Kapatma Sebebi:** Manuel kayıt tamamlandı",
-                                color=discord.Color.red(),
-                                timestamp=discord.utils.utcnow()
-                            )
-                            transcript_embed.add_field(
-                                name="👤 Kullanıcı",
-                                value=f"{self.member.mention} (`{self.member.id}`)",
-                                inline=False
-                            )
-                            transcript_embed.add_field(
-                                name="📋 Kayıt Bilgileri",
-                                value=f"**İsim:** {formatted_name}\n**Yaş:** {self.age}\n**Yaş Durumu:** {visibility_status}",
-                                inline=False
-                            )
-                            
-                            await log_channel.send(
-                                embed=transcript_embed,
-                                file=discord.File(transcript_file, filename=f"transcript-{interaction.channel.name}.txt")
-                            )
-                    except Exception as e:
-                        print(f"[HATA] Ticket transcript kaydedilirken hata: {type(e).__name__}: {e}")
-                    
-                    # Kanalı sil
-                    await interaction.channel.delete(reason="Kayıt tamamlandı - Otomatik kapatma")
-                    
-                except Exception as e:
-                    print(f"[HATA] Ticket otomatik kapatılırken hata: {type(e).__name__}: {e}")
+                # Kanalı sil
+                await interaction.channel.delete(reason="Manuel kayıt tamamlandı - Otomatik kapatma")
                 
             except Exception as e:
-                print(f"[HATA] Ticket otomatik kapatılırken hata: {type(e).__name__}: {e}")
+                print(f"[HATA] Ticket kapatılırken hata: {type(e).__name__}: {e}")
             
         except Exception as e:
             print(f"[HATA] Manuel kayıt hatası: {type(e).__name__}: {e}")
