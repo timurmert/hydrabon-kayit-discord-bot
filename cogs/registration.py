@@ -622,8 +622,8 @@ class ManualRegistrationModal(discord.ui.Modal, title="Manuel Kayıt Formu"):
                         f"**Kaydınız başarıyla onaylandı!**\n\n"
                         f"Artık sunucumuza tam erişiminiz var. İsterseniz size özel bildirim rollerini alabilirsiniz:\n\n"
                         f"🎉 **Etkinlik Bildirim** - Sunucu etkinliklerinden haberdar olun\n"
-                        f"🎁 **Çekiliş Bildirim** - Çekiliş duyurularından haberdar olun\n"
-                        f"❓ **Günün Sorusu Bildirim** - Günlük soru etkinliklerinden haberdar olun"
+                        f"🎁 **Çekiliş Bildirim** - <#1029089842119852114> kanalından haberdar olun\n"
+                        f"❓ **Günün Sorusu Bildirim** - <#1202362927248846878> kanalından haberdar olun"
                     ),
                     color=discord.Color.green()
                 )
@@ -1052,10 +1052,9 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
             embed.add_field(
                 name="🎭 Kayıt Sonrası Alınabilecek Roller",
                 value=(
-                    "Kaydınız onaylandıktan sonra aşağıdaki rolleri alabilirsiniz:\n\n"
                     "🎉 **Etkinlik Bildirim** - Sunucu etkinliklerinden haberdar olun\n"
-                    "🎁 **Çekiliş Bildirim** - Çekiliş duyurularından haberdar olun\n"
-                    "❓ **Günün Sorusu Bildirim** - Günlük soru etkinliklerinden haberdar olun\n\n"
+                    "🎁 **Çekiliş Bildirim** - <#1029089842119852114> kanalından haberdar olun\n"
+                    "❓ **Günün Sorusu Bildirim** - <#1202362927248846878> kanalından haberdar olun"
                     f"💡 Kaydınız onaylandıktan sonra <#{ROLE_SELECTION_CHANNEL_ID}> kanalından rolleri alabilirsiniz."
                 ),
                 inline=False
@@ -1891,8 +1890,8 @@ class AgeVisibilityView(discord.ui.View):
                 "**Etkinliklerden, çekilişlerden ve günün sorularından haberdar olmak ister misiniz?**\n\n"
                 "Bildirim rolleri alarak:\n"
                 "• 🎉 Etkinlik duyurularından\n"
-                "• 🎁 Çekiliş duyurularından\n"
-                "• ❓ Günün sorusu etkinliklerinden\n"
+                "• 🎁 Çekilişlerden\n"
+                "• ❓ Günün sorusu kanalından\n"
                 "haberdar olabilirsiniz.\n\n"
                 "Rolleri almak ister misiniz?"
             ),
