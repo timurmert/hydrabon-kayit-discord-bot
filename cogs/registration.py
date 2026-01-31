@@ -1054,7 +1054,7 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
                 value=(
                     "🎉 **Etkinlik Bildirim** - Sunucu etkinliklerinden haberdar olun\n"
                     "🎁 **Çekiliş Bildirim** - <#1029089842119852114> kanalından haberdar olun\n"
-                    "❓ **Günün Sorusu Bildirim** - <#1202362927248846878> kanalından haberdar olun"
+                    "❓ **Günün Sorusu Bildirim** - <#1202362927248846878> kanalından haberdar olun\n\n"
                     f"💡 Kaydınız onaylandıktan sonra <#{ROLE_SELECTION_CHANNEL_ID}> kanalından rolleri alabilirsiniz."
                 ),
                 inline=False
@@ -1889,8 +1889,8 @@ class AgeVisibilityView(discord.ui.View):
             description=(
                 "**Etkinliklerden, çekilişlerden ve günün sorularından haberdar olmak ister misiniz?**\n\n"
                 "Bildirim rolleri alarak:\n"
+                "• 🎉 Etkinliklerden\n"
                 "• 🎉 Etkinlik duyurularından\n"
-                "• 🎁 Çekilişlerden\n"
                 "• ❓ Günün sorusu kanalından\n"
                 "haberdar olabilirsiniz.\n\n"
                 "Rolleri almak ister misiniz?"
