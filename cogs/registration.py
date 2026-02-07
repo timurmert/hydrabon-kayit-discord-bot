@@ -21,6 +21,7 @@ REGISTRATION_LOG_CHANNEL_ID = 1459636312519872553  # Kayıt denemesi log kanalı
 TICKET_LOG_CHANNEL_ID = 1364306112022839436  # Ticket transcript log kanalı
 TICKET_CATEGORY_ID = 1364301691637338132     # Ticket kategorisi
 ROLE_SELECTION_CHANNEL_ID = 1432764482547089570  # Rol alma kanalı
+TICKET_CREATE_CHANNEL_ID = 1364306040727933017  # Ticket oluşturma kanalı
 
 # Yetki
 OWNER_ID = 315888596437696522  # Bot sahibinin ID'si
@@ -978,16 +979,26 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
                 )
             
             # Kullanıcının zaten bir açık ticket'ı olup olmadığını kontrol et
+            user_ticket_channel = None
             for channel in category.channels:
                 if isinstance(channel, discord.TextChannel):
-                    # Kullanıcının bu kanala erişimi varsa, zaten bir ticket'ı var demektir
+                    # Ticket oluşturma ve log kanallarını hariç tut
+                    if channel.id == TICKET_CREATE_CHANNEL_ID or channel.id == TICKET_LOG_CHANNEL_ID:
+                        continue
+                    
+                    # Kullanıcının bu kanala erişimi varsa ve kanal bir ticket kanalıysa
                     permissions = channel.permissions_for(interaction.user)
-                    if permissions.read_messages and (channel.id != 1364306040727933017 and channel.id != 1364306112022839436):
-                        return await interaction.followup.send(
-                            f"❌ Zaten açık bir destek talebiniz bulunmaktadır: {channel.mention}\n"
-                            "Lütfen mevcut talebinizi tamamlayın veya kapatın.",
-                            ephemeral=True
-                        )
+                    if permissions.read_messages and (channel.name.startswith(f"kayıt-{interaction.user.name}") or 
+                                                      channel.name.startswith(f"yaş-sıfırlama-{interaction.user.name}")):
+                        user_ticket_channel = channel
+                        break
+            
+            if user_ticket_channel:
+                return await interaction.followup.send(
+                    f"❌ Zaten açık bir destek talebiniz bulunmaktadır: {user_ticket_channel.mention}\n"
+                    "Lütfen mevcut talebinizi tamamlayın veya kapatın.",
+                    ephemeral=True
+                )
             
             # Ticket kanalı adı
             ticket_name = f"kayıt-{interaction.user.name}-{interaction.user.discriminator}"
@@ -1510,16 +1521,26 @@ class AgeResetTicketModal(discord.ui.Modal, title="Yaş Sıfırlama Talebi"):
                 )
             
             # Kullanıcının zaten bir açık ticket'ı olup olmadığını kontrol et
+            user_ticket_channel = None
             for channel in category.channels:
                 if isinstance(channel, discord.TextChannel):
-                    # Kullanıcının bu kanala erişimi varsa, zaten bir ticket'ı var demektir
+                    # Ticket oluşturma ve log kanallarını hariç tut
+                    if channel.id == TICKET_CREATE_CHANNEL_ID or channel.id == TICKET_LOG_CHANNEL_ID:
+                        continue
+                    
+                    # Kullanıcının bu kanala erişimi varsa ve kanal bir ticket kanalıysa
                     permissions = channel.permissions_for(interaction.user)
-                    if permissions.read_messages:
-                        return await interaction.followup.send(
-                            f"❌ Zaten açık bir destek talebiniz bulunmaktadır: {channel.mention}\n"
-                            "Lütfen mevcut talebinizi tamamlayın veya kapatın.",
-                            ephemeral=True
-                        )
+                    if permissions.read_messages and (channel.name.startswith(f"kayıt-{interaction.user.name}") or 
+                                                      channel.name.startswith(f"yaş-sıfırlama-{interaction.user.name}")):
+                        user_ticket_channel = channel
+                        break
+            
+            if user_ticket_channel:
+                return await interaction.followup.send(
+                    f"❌ Zaten açık bir destek talebiniz bulunmaktadır: {user_ticket_channel.mention}\n"
+                    "Lütfen mevcut talebinizi tamamlayın veya kapatın.",
+                    ephemeral=True
+                )
             
             # Ticket kanalı adı
             ticket_name = f"yaş-sıfırlama-{interaction.user.name}-{interaction.user.discriminator}"
