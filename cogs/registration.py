@@ -325,7 +325,7 @@ class TicketCloseConfirmView(discord.ui.View):
             if log_channel:
                 # Log embed'i
                 log_embed = discord.Embed(
-                    title="🔒 Destek Ticket'ı Kapatıldı",
+                    title="🔒 Destek Ticket'ı Kapatıldı (Manuel)",
                     description=f"**#{channel.name}** ticket'ı kapatıldı.",
                     color=discord.Color.red(),
                     timestamp=discord.utils.utcnow()
@@ -337,7 +337,7 @@ class TicketCloseConfirmView(discord.ui.View):
                 )
                 log_embed.add_field(
                     name="👤 İşlem Yapan",
-                    value=f"**Yetkili:** {interaction.user.mention}\n**Tag:** {interaction.user}",
+                    value=f"**Yetkili:** {interaction.user.mention} ({interaction.user})",
                     inline=False
                 )
                 log_embed.set_footer(text="HydRaboN Ticket Sistemi", icon_url=guild.icon.url if guild.icon else None)
@@ -676,7 +676,7 @@ class ManualRegistrationModal(discord.ui.Modal, title="Manuel Kayıt Formu"):
                         
                         # Log embed
                         transcript_embed = discord.Embed(
-                            title="📝 Ticket Kapatıldı (Otomatik)",
+                            title="📝 Destek Ticket'ı Kapatıldı (Otomatik)",
                             description=f"**Ticket:** {interaction.channel.name}\n**Sebep:** Manuel kayıt tamamlandı",
                             color=discord.Color.red(),
                             timestamp=discord.utils.utcnow()
