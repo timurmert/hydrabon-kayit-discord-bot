@@ -27,6 +27,25 @@ OWNER_ID = 315888596437696522  # Bot sahibinin ID'si
 
 # =========================================
 
+# Yetkilendirme kontrolü
+def check_registration_permission(member: discord.Member) -> bool:
+    """
+    Manuel kayıt yetkisini kontrol eder.
+    YK Üyeleri, YK Adayları ve Yöneticiler kayıt yapabilir.
+    """
+    # Yönetici kontrolü
+    if member.guild_permissions.administrator:
+        return True
+    
+    # Rol bazlı kontrol
+    role_ids = [role.id for role in member.roles]
+    
+    # YK Üyeleri veya YK Adayları rolü varsa izin ver
+    if YK_UYELERI_ROLE_ID in role_ids or YK_ADAYLARI_ROLE_ID in role_ids:
+        return True
+    
+    return False
+
 # Türkçe karakter normalleştirme
 def normalize_turkish(text: str) -> str:
     """Türkçe karakterleri normalize eder (küçük harf)"""
@@ -734,10 +753,10 @@ class TicketControlView(discord.ui.View):
     async def manual_register(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Manuel kayıt butonu - Formu aç"""
         try:
-            # Yönetici kontrolü
-            if not interaction.user.guild_permissions.administrator:
+            # Yetkilendirme kontrolü (YK Üyeleri, YK Adayları ve Yöneticiler)
+            if not check_registration_permission(interaction.user):
                 return await interaction.response.send_message(
-                    "❌ Bu işlem için yönetici yetkisi gereklidir!",
+                    "❌ Bu işlem için yetkiniz bulunmamaktadır! (YK Üyeleri, YK Adayları veya Yönetici yetkisi gereklidir)",
                     ephemeral=True
                 )
             
@@ -779,10 +798,10 @@ class TicketControlView(discord.ui.View):
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Ticket kapatma butonu"""
         try:
-            # Yönetici kontrolü
-            if not interaction.user.guild_permissions.administrator:
+            # Yetkilendirme kontrolü (YK Üyeleri, YK Adayları ve Yöneticiler)
+            if not check_registration_permission(interaction.user):
                 return await interaction.response.send_message(
-                    "❌ Bu işlem için yönetici yetkisi gereklidir!",
+                    "❌ Bu işlem için yetkiniz bulunmamaktadır! (YK Üyeleri, YK Adayları veya Yönetici yetkisi gereklidir)",
                     ephemeral=True
                 )
             
@@ -1156,10 +1175,10 @@ class AgeResetTicketControlView(discord.ui.View):
     )
     async def approve_reset(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Yaş sıfırlama talebini onayla"""
-        # Yönetici kontrolü
-        if not interaction.user.guild_permissions.administrator:
+        # Yetkilendirme kontrolü (YK Üyeleri, YK Adayları ve Yöneticiler)
+        if not check_registration_permission(interaction.user):
             return await interaction.response.send_message(
-                "❌ Bu işlem için yönetici yetkisi gereklidir!",
+                "❌ Bu işlem için yetkiniz bulunmamaktadır! (YK Üyeleri, YK Adayları veya Yönetici yetkisi gereklidir)",
                 ephemeral=True
             )
         
@@ -1333,10 +1352,10 @@ class AgeResetTicketControlView(discord.ui.View):
     )
     async def reject_reset(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Yaş sıfırlama talebini reddet"""
-        # Yönetici kontrolü
-        if not interaction.user.guild_permissions.administrator:
+        # Yetkilendirme kontrolü (YK Üyeleri, YK Adayları ve Yöneticiler)
+        if not check_registration_permission(interaction.user):
             return await interaction.response.send_message(
-                "❌ Bu işlem için yönetici yetkisi gereklidir!",
+                "❌ Bu işlem için yetkiniz bulunmamaktadır! (YK Üyeleri, YK Adayları veya Yönetici yetkisi gereklidir)",
                 ephemeral=True
             )
         
@@ -2350,6 +2369,13 @@ class Registration(commands.Cog):
     ):
         """Kullanıcının kaydını sıfırlar"""
         
+        # Yetkilendirme kontrolü (YK Üyeleri, YK Adayları ve Yöneticiler)
+        if not check_registration_permission(interaction.user):
+            return await interaction.response.send_message(
+                "❌ Bu komutu kullanma yetkiniz bulunmamaktadır! (YK Üyeleri, YK Adayları veya Yönetici yetkisi gereklidir)",
+                ephemeral=True
+            )
+        
         await interaction.response.defer(ephemeral=True)
         
         try:
@@ -2479,6 +2505,13 @@ class Registration(commands.Cog):
         kullanici: discord.Member
     ):
         """Kullanıcının kayıt bilgilerini görüntüler (isim, yaş, kayıt tarihi vb.)"""
+        
+        # Yetkilendirme kontrolü (YK Üyeleri, YK Adayları ve Yöneticiler)
+        if not check_registration_permission(interaction.user):
+            return await interaction.response.send_message(
+                "❌ Bu komutu kullanma yetkiniz bulunmamaktadır! (YK Üyeleri, YK Adayları veya Yönetici yetkisi gereklidir)",
+                ephemeral=True
+            )
         
         await interaction.response.defer(ephemeral=True)
         
@@ -2887,10 +2920,10 @@ class Registration(commands.Cog):
     ):
         """Veritabanında ismin var olup olmadığını kontrol eder"""
         
-        # Yönetici kontrolü (güvenlik için)
-        if not interaction.user.guild_permissions.administrator:
+        # Yetkilendirme kontrolü (YK Üyeleri, YK Adayları ve Yöneticiler)
+        if not check_registration_permission(interaction.user):
             return await interaction.response.send_message(
-                "❌ Bu komutu kullanma yetkiniz bulunmamaktadır.",
+                "❌ Bu komutu kullanma yetkiniz bulunmamaktadır! (YK Üyeleri, YK Adayları veya Yönetici yetkisi gereklidir)",
                 ephemeral=True
             )
         
