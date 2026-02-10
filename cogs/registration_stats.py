@@ -1,4 +1,4 @@
-from discord.ext import commands, tasks
+from discord.ext import commands
 import aiosqlite
 import datetime
 import pytz
@@ -16,11 +16,6 @@ class RegistrationStats(commands.Cog):
     async def cog_load(self):
         """Cog yüklendiğinde veritabanını hazırla"""
         await self.setup_database()
-        self.cleanup_old_records.start()  # Temizleme görevini başlat
-    
-    async def cog_unload(self):
-        """Cog kaldırıldığında temizleme görevini durdur"""
-        self.cleanup_old_records.cancel()
     
     async def setup_database(self):
         """Veritabanını oluştur"""
@@ -119,26 +114,29 @@ class RegistrationStats(commands.Cog):
             print(f"[HATA] Yaş güncellenirken hata: {type(e).__name__}: {e}")
             return False
     
-    @tasks.loop(hours=24)
-    async def cleanup_old_records(self):
-        """2 haftadan eski kayıtları sil"""
+    async def delete_user_data(self, user_id: str):
+        """Kullanıcının tüm verilerini sil"""
         try:
-            now = datetime.datetime.now(TURKEY_TZ)
-            two_weeks_ago = now - datetime.timedelta(days=14)
-            
             async with aiosqlite.connect(self.db_path) as db:
-                await db.execute("""
+                cursor = await db.execute("""
                     DELETE FROM registrations 
-                    WHERE registered_at < ?
-                """, (two_weeks_ago,))
+                    WHERE user_id = ?
+                """, (user_id,))
+                deleted_count = cursor.rowcount
                 await db.commit()
+                return deleted_count
         except Exception as e:
-            print(f"[HATA] Eski kayıtlar silinirken hata: {type(e).__name__}: {e}")
+            print(f"[HATA] Kullanıcı verileri silinirken hata: {type(e).__name__}: {e}")
+            return 0
     
-    @cleanup_old_records.before_loop
-    async def before_cleanup(self):
-        """Bot hazır olana kadar bekle"""
-        await self.bot.wait_until_ready()
+    @commands.Cog.listener()
+    async def on_member_remove(self, member):
+        """Üye sunucudan çıktığında veritabanından verilerini sil"""
+        if member.bot:
+            return
+        
+        user_id = str(member.id)
+        await self.delete_user_data(user_id)
 
 
 async def setup(bot: commands.Bot):
