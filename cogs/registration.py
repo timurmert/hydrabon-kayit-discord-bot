@@ -862,9 +862,36 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
         style=discord.TextStyle.short
     )
     
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot, origin_view=None, origin_message=None):
         super().__init__()
         self.bot = bot
+        self.origin_view = origin_view
+        self.origin_message = origin_message
+    
+    async def disable_origin_buttons(self, error_message: str = None):
+        """Orijinal mesajdaki butonları devre dışı bırakır"""
+        if self.origin_view and self.origin_message:
+            try:
+                for item in self.origin_view.children:
+                    item.disabled = True
+                
+                if error_message:
+                    disabled_embed = discord.Embed(
+                        title="❌ İşlem Başarısız",
+                        description=error_message,
+                        color=discord.Color.red()
+                    )
+                else:
+                    disabled_embed = discord.Embed(
+                        title="✅ Destek Talebi Oluşturuldu",
+                        description="Destek talebiniz başarıyla oluşturuldu. Ticket kanalınızı kontrol edin.",
+                        color=discord.Color.green()
+                    )
+                
+                await self.origin_message.edit(embed=disabled_embed, view=self.origin_view)
+                self.origin_view.stop()
+            except Exception as e:
+                print(f"[HATA] Orijinal mesaj güncellenirken hata: {type(e).__name__}: {e}")
     
     async def log_manual_registration_attempt(
         self, 
@@ -971,6 +998,7 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
                         interaction, name, age_str, show_age_str, False,
                         "Yaş 13-99 aralığı dışında (Manuel kayıt talebi)"
                     )
+                    await self.disable_origin_buttons("Geçersiz yaş! Lütfen 13-99 arası bir yaş giriniz.")
                     return await interaction.followup.send(
                         "❌ Geçersiz yaş! Lütfen 13-99 arası bir yaş giriniz.",
                         ephemeral=True
@@ -981,6 +1009,7 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
                     interaction, name, age_str, show_age_str, False,
                     "Geçersiz yaş formatı (Manuel kayıt talebi)"
                 )
+                await self.disable_origin_buttons("Geçersiz yaş formatı! Lütfen sadece sayı giriniz.")
                 return await interaction.followup.send(
                     "❌ Geçersiz yaş formatı! Lütfen sadece sayı giriniz.",
                     ephemeral=True
@@ -991,6 +1020,7 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
             
             if not category or not isinstance(category, discord.CategoryChannel):
                 print(f"[HATA] Ticket kategorisi bulunamadı! Kategori ID: {TICKET_CATEGORY_ID}")
+                await self.disable_origin_buttons("Sistem hatası oluştu. Lütfen yetkililere bildirin.")
                 return await interaction.followup.send(
                     "❌ Sistem hatası: Ticket kategorisi bulunamadı. Lütfen yetkililere bildirin.",
                     ephemeral=True
@@ -1002,6 +1032,7 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
                     # Kullanıcının bu kanala erişimi varsa, zaten bir ticket'ı var demektir
                     permissions = channel.permissions_for(interaction.user)
                     if permissions.read_messages and (channel.id != 1364306040727933017 and channel.id != 1364306112022839436):
+                        await self.disable_origin_buttons(f"Zaten açık bir destek talebiniz var: {channel.name}")
                         return await interaction.followup.send(
                             f"❌ Zaten açık bir destek talebiniz bulunmaktadır: {channel.mention}\n"
                             "Lütfen mevcut talebinizi tamamlayın veya kapatın.",
@@ -1101,6 +1132,9 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
                 ephemeral=True
             )
             
+            # Orijinal onay mesajındaki butonları devre dışı bırak
+            await self.disable_origin_buttons()
+            
             # Genel log kanalına bildirim gönder
             try:
                 log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
@@ -1130,12 +1164,14 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
             
         except discord.Forbidden:
             print(f"[HATA] Ticket kanalı oluşturma yetkisi yok!")
+            await self.disable_origin_buttons("Sistem hatası: Yetki eksikliği.")
             await interaction.followup.send(
                 "❌ Ticket kanalı oluşturma yetkim yok. Lütfen yetkililere bildirin.",
                 ephemeral=True
             )
         except Exception as e:
             print(f"[HATA] Ticket oluşturulurken hata: {type(e).__name__}: {e}")
+            await self.disable_origin_buttons("Ticket oluşturulurken bir hata oluştu.")
             await interaction.followup.send(
                 "❌ Ticket oluşturulurken bir hata oluştu. Lütfen yetkililere bildirin.",
                 ephemeral=True
@@ -2091,7 +2127,7 @@ class NewAccountSupportView(discord.ui.View):
     """Yeni hesaplar için yetkili çağırma butonu"""
     
     def __init__(self, bot: commands.Bot):
-        super().__init__(timeout=60)  # 60 saniye timeout
+        super().__init__(timeout=300)  # 5 dakika timeout - kullanıcıya formu doldurması için yeterli süre
         self.bot = bot
         self.message = None
     
@@ -2109,7 +2145,7 @@ class NewAccountSupportView(discord.ui.View):
     async def support_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Yetkili çağır butonuna basıldığında modal aç"""
         try:
-            modal = SupportTicketModal(self.bot)
+            modal = SupportTicketModal(self.bot, origin_view=self, origin_message=self.message)
             await interaction.response.send_modal(modal)
         except Exception as e:
             print(f"[HATA] Destek modal açılırken hata: {type(e).__name__}: {e}")
@@ -2126,7 +2162,7 @@ class SupportConfirmView(discord.ui.View):
     """Yetkili çağırma onay butonu"""
     
     def __init__(self, bot: commands.Bot):
-        super().__init__(timeout=60)  # 60 saniye timeout
+        super().__init__(timeout=300)  # 5 dakika timeout - kullanıcıya formu doldurması için yeterli süre
         self.bot = bot
         self.message = None
     
@@ -2144,7 +2180,7 @@ class SupportConfirmView(discord.ui.View):
     async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Evet butonuna basıldığında modal aç"""
         try:
-            modal = SupportTicketModal(self.bot)
+            modal = SupportTicketModal(self.bot, origin_view=self, origin_message=self.message)
             await interaction.response.send_modal(modal)
         except Exception as e:
             print(f"[HATA] Destek modal açılırken hata: {type(e).__name__}: {e}")
