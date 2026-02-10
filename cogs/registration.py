@@ -2685,10 +2685,142 @@ class Registration(commands.Cog):
             name, age, registered_at, show_age = user_info
             current_status = "Görünür ✅" if show_age else "Gizli 👁️"
             
+            # Anasayfaya dönüş view'ı
+            class BackToSettingsView(discord.ui.View):
+                def __init__(self, bot, stats_cog, member, name, age, current_show_age):
+                    super().__init__(timeout=300)
+                    self.bot = bot
+                    self.stats_cog = stats_cog
+                    self.member = member
+                    self.name = name
+                    self.age = age
+                    self.current_show_age = current_show_age
+                    self.message = None
+                
+                async def on_timeout(self):
+                    """Timeout olduğunda butonları devre dışı bırak"""
+                    if self.message:
+                        try:
+                            for item in self.children:
+                                item.disabled = True
+                            await self.message.edit(view=self)
+                        except:
+                            pass
+                
+                @discord.ui.button(label="🏠 Anasayfaya Dön", style=discord.ButtonStyle.primary, emoji="🏠")
+                async def back_to_home(self, interaction: discord.Interaction, button: discord.ui.Button):
+                    """Ana ayarlar sayfasına dön"""
+                    main_view = RegistrationSettingsView(
+                        self.bot, self.stats_cog, self.member,
+                        self.name, self.age, self.current_show_age, self.message
+                    )
+                    embed = main_view.create_main_embed()
+                    await interaction.response.edit_message(embed=embed, view=main_view)
+            
+            # Rol yönetimi için geri dönüş view'ı
+            class RoleManageViewWithBack(discord.ui.View):
+                def __init__(self, member, bot, stats_cog, name, age, current_show_age):
+                    super().__init__(timeout=300)
+                    self.member = member
+                    self.bot = bot
+                    self.stats_cog = stats_cog
+                    self.name = name
+                    self.age = age
+                    self.current_show_age = current_show_age
+                    self.message = None
+                    self.add_item(RoleManageSelect(member, self))
+                
+                async def on_timeout(self):
+                    """Timeout olduğunda butonları devre dışı bırak"""
+                    if self.message:
+                        try:
+                            for item in self.children:
+                                item.disabled = True
+                            await self.message.edit(view=self)
+                        except:
+                            pass
+                
+                @discord.ui.button(label="🏠 Anasayfaya Dön", style=discord.ButtonStyle.secondary, emoji="🏠", row=1)
+                async def back_to_home(self, interaction: discord.Interaction, button: discord.ui.Button):
+                    """Ana ayarlar sayfasına dön"""
+                    main_view = RegistrationSettingsView(
+                        self.bot, self.stats_cog, self.member,
+                        self.name, self.age, self.current_show_age, self.message
+                    )
+                    embed = main_view.create_main_embed()
+                    await interaction.response.edit_message(embed=embed, view=main_view)
+            
+            # Yaş sıfırlama onay view'ı geri dönüş ile
+            class AgeResetConfirmWithBackView(discord.ui.View):
+                def __init__(self, bot, current_name, current_age, stats_cog, member, current_show_age):
+                    super().__init__(timeout=300)
+                    self.bot = bot
+                    self.current_name = current_name
+                    self.current_age = current_age
+                    self.stats_cog = stats_cog
+                    self.member = member
+                    self.current_show_age = current_show_age
+                    self.message = None
+                
+                async def on_timeout(self):
+                    """Timeout olduğunda butonları devre dışı bırak"""
+                    if self.message:
+                        try:
+                            for item in self.children:
+                                item.disabled = True
+                            await self.message.edit(view=self)
+                        except:
+                            pass
+                
+                @discord.ui.button(label="Evet, Ticket Aç", style=discord.ButtonStyle.danger, emoji="✅", row=0)
+                async def confirm_reset(self, interaction: discord.Interaction, button: discord.ui.Button):
+                    """Yaş sıfırlama ticket'ı açmayı onayla"""
+                    try:
+                        modal = AgeResetTicketModal(self.bot, self.current_name, self.current_age)
+                        await interaction.response.send_modal(modal)
+                    except Exception as e:
+                        print(f"[HATA] Yaş sıfırlama modal açılırken hata: {type(e).__name__}: {e}")
+                        try:
+                            await interaction.response.send_message(
+                                "❌ Form açılırken bir hata oluştu. Lütfen tekrar deneyiniz.",
+                                ephemeral=True
+                            )
+                        except:
+                            print("[HATA] Kullanıcıya modal açma hatası mesajı gönderilemedi!")
+                
+                @discord.ui.button(label="Hayır, İptal Et", style=discord.ButtonStyle.secondary, emoji="❌", row=0)
+                async def cancel_reset(self, interaction: discord.Interaction, button: discord.ui.Button):
+                    """Yaş sıfırlama iptal edildi"""
+                    embed = discord.Embed(
+                        title="✅ İşlem İptal Edildi",
+                        description="Yaş sıfırlama işleminiz iptal edildi.",
+                        color=discord.Color.green()
+                    )
+                    embed.set_footer(text="Anasayfaya dönmek için aşağıdaki butona tıklayın")
+                    
+                    # Geri dön view'ı
+                    back_view = BackToSettingsView(
+                        self.bot, self.stats_cog, self.member,
+                        self.current_name, self.current_age, self.current_show_age
+                    )
+                    back_view.message = self.message
+                    await interaction.response.edit_message(embed=embed, view=back_view)
+                
+                @discord.ui.button(label="🏠 Anasayfaya Dön", style=discord.ButtonStyle.primary, emoji="🏠", row=1)
+                async def back_to_home(self, interaction: discord.Interaction, button: discord.ui.Button):
+                    """Ana ayarlar sayfasına dön"""
+                    main_view = RegistrationSettingsView(
+                        self.bot, self.stats_cog, self.member,
+                        self.current_name, self.current_age, self.current_show_age, self.message
+                    )
+                    embed = main_view.create_main_embed()
+                    await interaction.response.edit_message(embed=embed, view=main_view)
+            
             # Rol düzenleme select menu
             class RoleManageSelect(discord.ui.Select):
-                def __init__(self, member: discord.Member):
+                def __init__(self, member: discord.Member, parent_view):
                     self.member = member
+                    self.parent_view = parent_view
                     
                     # Yönetilebilir rol ID'leri
                     self.manageable_role_ids = [
@@ -2722,7 +2854,7 @@ class Registration(commands.Cog):
                     )
                 
                 async def callback(self, interaction: discord.Interaction):
-                    await interaction.response.defer(ephemeral=True)
+                    await interaction.response.defer()
                     
                     try:
                         # Seçilen rol ID'leri
@@ -2758,22 +2890,35 @@ class Registration(commands.Cog):
                         # Sonuç mesajı
                         result_parts = []
                         if added_roles:
-                            result_parts.append(f"**Eklenen Roller:** {', '.join(added_roles)}")
+                            result_parts.append(f"**✅ Eklenen Roller:**\n• {chr(10) + '• '.join(added_roles)}")
                         if removed_roles:
-                            result_parts.append(f"**Kaldırılan Roller:** {', '.join(removed_roles)}")
+                            result_parts.append(f"**❌ Kaldırılan Roller:**\n• {chr(10) + '• '.join(removed_roles)}")
                         
                         if not result_parts:
                             result_msg = "Herhangi bir değişiklik yapılmadı."
+                            embed_color = discord.Color.orange()
                         else:
-                            result_msg = "\n".join(result_parts)
+                            result_msg = "\n\n".join(result_parts)
+                            embed_color = discord.Color.green()
                         
                         embed = discord.Embed(
                             title="✅ Roller Güncellendi!",
                             description=result_msg,
-                            color=discord.Color.green()
+                            color=embed_color
                         )
+                        embed.set_footer(text="Anasayfaya dönmek için aşağıdaki butona tıklayın")
                         
-                        await interaction.followup.send(embed=embed, ephemeral=True)
+                        # Geri dön view'ı
+                        back_view = BackToSettingsView(
+                            self.parent_view.bot,
+                            self.parent_view.stats_cog,
+                            self.parent_view.member,
+                            self.parent_view.name,
+                            self.parent_view.age,
+                            self.parent_view.current_show_age
+                        )
+                        back_view.message = self.parent_view.message
+                        await interaction.edit_original_response(embed=embed, view=back_view)
                         
                     except Exception as e:
                         print(f"[HATA] Rol yönetimi hatası: {e}")
@@ -2782,21 +2927,64 @@ class Registration(commands.Cog):
                             ephemeral=True
                         )
             
-            class RoleManageView(discord.ui.View):
-                def __init__(self, member: discord.Member):
-                    super().__init__(timeout=60)
-                    self.add_item(RoleManageSelect(member))
-            
             # Ana ayarlar view'ı
             class RegistrationSettingsView(discord.ui.View):
-                def __init__(self, bot, stats_cog, member, name, age, current_show_age):
-                    super().__init__(timeout=60)
+                def __init__(self, bot, stats_cog, member, name, age, current_show_age, message=None):
+                    super().__init__(timeout=300)  # 5 dakika
                     self.bot = bot
                     self.stats_cog = stats_cog
                     self.member = member
                     self.name = name
                     self.age = age
                     self.current_show_age = current_show_age
+                    self.message = message
+                
+                async def on_timeout(self):
+                    """Timeout olduğunda butonları devre dışı bırak"""
+                    if self.message:
+                        try:
+                            for item in self.children:
+                                item.disabled = True
+                            
+                            # Timeout mesajını embed'e ekle
+                            embed = self.message.embeds[0] if self.message.embeds else discord.Embed(
+                                title="⚙️ Kayıt Ayarları",
+                                description="⏱️ Oturum süresi doldu. Yeni bir ayar yapmak için `/kayit-ayarlari` komutunu tekrar kullanın.",
+                                color=discord.Color.grayed_out()
+                            )
+                            embed.set_footer(text="⏱️ Bu oturum sona erdi")
+                            
+                            await self.message.edit(embed=embed, view=self)
+                        except Exception as e:
+                            print(f"[HATA] Timeout mesajı güncellenirken hata: {e}")
+                
+                def create_main_embed(self):
+                    """Ana sayfa embed'ini oluştur"""
+                    current_status = "Görünür ✅" if self.current_show_age else "Gizli 👁️"
+                    
+                    embed = discord.Embed(
+                        title="⚙️ Kayıt Ayarları",
+                        description=(
+                            f"**Kayıt Bilgileriniz:**\n"
+                            f"• İsim: {self.name}\n"
+                            f"• Yaş: {self.age}\n"
+                            f"• Yaş Durumu: {current_status}\n\n"
+                            "**Kullanılabilir Ayarlar:**\n\n"
+                            "🔸 **Yaş Görünürlüğü**\n"
+                            "• Yaşınızın kullanıcı adınızda görünmesini ayarlayın\n"
+                            "• Göster: `{0} | {1}` formatında\n"
+                            "• Gizle: `{0}` formatında\n\n"
+                            "🔸 **Rol Yönetimi**\n"
+                            "• İstediğiniz rolleri kendiniz ekleyip kaldırabilirsiniz\n"
+                            "• Rollerinizi dilediğiniz gibi özelleştirin\n\n"
+                            "🔸 **Yaş Sıfırlama**\n"
+                            "• Yanlış yaş girildiyse yetkili desteği ile düzeltilebilir\n"
+                            "• Ticket açılarak değişiklik talebinde bulunabilirsiniz"
+                        ).format(self.name, self.age),
+                        color=discord.Color.blue()
+                    )
+                    embed.set_footer(text="Aşağıdaki butonları kullanarak ayarlarınızı değiştirebilirsiniz")
+                    return embed
                 
                 @discord.ui.button(label="Yaşımı Göster", style=discord.ButtonStyle.success, emoji="✅", row=0)
                 async def show_age(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -2808,7 +2996,7 @@ class Registration(commands.Cog):
 
                 @discord.ui.button(label="Yaşımı Sıfırla", style=discord.ButtonStyle.danger, emoji="🔄", row=0)
                 async def reset_age(self, interaction: discord.Interaction, button: discord.ui.Button):
-                    """Yaş sıfırlama onay sorusu göster"""
+                    """Yaş sıfırlama onay sayfasını göster"""
                     try:
                         embed = discord.Embed(
                             title="⚠️ Yaş Sıfırlama Onayı",
@@ -2825,9 +3013,13 @@ class Registration(commands.Cog):
                         )
                         embed.set_footer(text="Ticket açılması durumunda yetkililere bildirim gönderilecektir")
                         
-                        confirm_view = AgeResetConfirmView(self.bot, self.name, self.age)
-                        await interaction.response.send_message(embed=embed, view=confirm_view, ephemeral=True)
-                        confirm_view.message = await interaction.original_response()
+                        # Yaş sıfırlama view'ını ana view ile bağla
+                        confirm_view = AgeResetConfirmWithBackView(
+                            self.bot, self.name, self.age,
+                            self.stats_cog, self.member, self.current_show_age
+                        )
+                        confirm_view.message = self.message
+                        await interaction.response.edit_message(embed=embed, view=confirm_view)
                         
                     except Exception as e:
                         print(f"[HATA] Yaş sıfırlama onay mesajı gösterilirken hata: {e}")
@@ -2855,8 +3047,12 @@ class Registration(commands.Cog):
                         )
                         embed.set_footer(text="Değişiklikler anında uygulanacaktır")
                         
-                        role_view = RoleManageView(self.member)
-                        await interaction.response.send_message(embed=embed, view=role_view, ephemeral=True)
+                        role_view = RoleManageViewWithBack(
+                            self.member,
+                            self.bot, self.stats_cog, self.name, self.age, self.current_show_age
+                        )
+                        role_view.message = self.message
+                        await interaction.response.edit_message(embed=embed, view=role_view)
                         
                     except Exception as e:
                         print(f"[HATA] Rol yönetim menüsü açılırken hata: {e}")
@@ -2866,7 +3062,7 @@ class Registration(commands.Cog):
                         )
                 
                 async def toggle_age(self, interaction: discord.Interaction, show_age: bool):
-                    await interaction.response.defer(ephemeral=True)
+                    await interaction.response.defer()
                     
                     try:
                         # Veritabanını güncelle
@@ -2890,8 +3086,12 @@ class Registration(commands.Cog):
                         except Exception as e:
                             print(f"[HATA] Nickname değiştirilirken hata: {e}")
                         
+                        # Ayarı güncelle
+                        self.current_show_age = show_age
                         visibility_status = "Görünür ✅" if show_age else "Gizli 👁️"
+                        action_text = "gösterilecek" if show_age else "gizlenecek"
                         
+                        # Onay sayfası
                         embed = discord.Embed(
                             title="✅ Yaş Görünürlüğü Güncellendi!",
                             description=f"Yaş görünürlüğünüz başarıyla değiştirildi.",
@@ -2899,9 +3099,20 @@ class Registration(commands.Cog):
                         )
                         embed.add_field(name="Yeni Durum", value=visibility_status, inline=True)
                         embed.add_field(name="Yeni İsim", value=new_nickname, inline=True)
+                        embed.add_field(
+                            name="📝 Bilgi",
+                            value=f"Artık yaşınız kullanıcı adınızda {action_text}.",
+                            inline=False
+                        )
+                        embed.set_footer(text="Anasayfaya dönmek için aşağıdaki butona tıklayın")
                         
-                        await interaction.followup.send(embed=embed, ephemeral=True)
-                        self.stop()
+                        # Geri dön view'ı
+                        back_view = BackToSettingsView(
+                            self.bot, self.stats_cog, self.member,
+                            self.name, self.age, self.current_show_age
+                        )
+                        back_view.message = self.message
+                        await interaction.edit_original_response(embed=embed, view=back_view)
                         
                     except Exception as e:
                         print(f"[HATA] Yaş görünürlüğü değiştirme hatası: {e}")
@@ -2910,31 +3121,11 @@ class Registration(commands.Cog):
                             ephemeral=True
                         )
             
-            embed = discord.Embed(
-                title="⚙️ Kayıt Ayarları",
-                description=(
-                    f"**Kayıt Bilgileriniz:**\n"
-                    f"• İsim: {name}\n"
-                    f"• Yaş: {age}\n"
-                    f"• Yaş Durumu: {current_status}\n\n"
-                    "**Kullanılabilir Ayarlar:**\n\n"
-                    "🔸 **Yaş Görünürlüğü**\n"
-                    "• Yaşınızın kullanıcı adınızda görünmesini ayarlayın\n"
-                    "• Göster: `{0} | {1}` formatında\n"
-                    "• Gizle: `{0}` formatında\n\n"
-                    "🔸 **Rol Yönetimi**\n"
-                    "• İstediğiniz rolleri kendiniz ekleyip kaldırabilirsiniz\n"
-                    "• Rollerinizi dilediğiniz gibi özelleştirin\n\n"
-                    "🔸 **Yaş Sıfırlama**\n"
-                    "• Yanlış yaş girildiyse yetkili desteği ile düzeltilebilir\n"
-                    "• Ticket açılarak değişiklik talebinde bulunabilirsiniz"
-                ).format(name, age),
-                color=discord.Color.blue()
-            )
-            embed.set_footer(text="Aşağıdaki butonları kullanarak ayarlarınızı değiştirebilirsiniz")
-            
             view = RegistrationSettingsView(self.bot, stats_cog, interaction.user, name, age, show_age)
-            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+            embed = view.create_main_embed()
+            
+            message = await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+            view.message = message
             
         except Exception as e:
             print(f"[HATA] Kayıt ayarları hatası: {type(e).__name__}: {e}")
