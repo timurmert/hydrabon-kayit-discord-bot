@@ -2692,32 +2692,32 @@ class Registration(commands.Cog):
                         # Seçilen rol ID'leri
                         selected_role_ids = [int(value) for value in self.values]
                         
-                        # Mevcut roller ile karşılaştır
+                        # Sadece seçilen rolleri toggle et
                         added_roles = []
                         removed_roles = []
                         
-                        for role_id in self.manageable_role_ids:
+                        # Sadece seçilen roller üzerinde işlem yap
+                        for role_id in selected_role_ids:
                             role = self.member.guild.get_role(role_id)
                             if not role:
                                 continue
                             
                             has_role = role in self.member.roles
-                            should_have = role_id in selected_role_ids
                             
-                            if should_have and not has_role:
-                                # Rol verilecek
+                            if has_role:
+                                # Rol kullanıcıda var, kaldır (toggle)
                                 try:
-                                    await self.member.add_roles(role, reason="Kullanıcı rol yönetimi")
-                                    added_roles.append(role.name)
-                                except Exception as e:
-                                    print(f"[HATA] Rol eklenirken hata ({role.name}): {e}")
-                            elif not should_have and has_role:
-                                # Rol alınacak
-                                try:
-                                    await self.member.remove_roles(role, reason="Kullanıcı rol yönetimi")
+                                    await self.member.remove_roles(role, reason="Kullanıcı rol yönetimi - toggle")
                                     removed_roles.append(role.name)
                                 except Exception as e:
                                     print(f"[HATA] Rol kaldırılırken hata ({role.name}): {e}")
+                            else:
+                                # Rol kullanıcıda yok, ekle (toggle)
+                                try:
+                                    await self.member.add_roles(role, reason="Kullanıcı rol yönetimi - toggle")
+                                    added_roles.append(role.name)
+                                except Exception as e:
+                                    print(f"[HATA] Rol eklenirken hata ({role.name}): {e}")
                         
                         # Sonuç mesajı
                         result_parts = []
@@ -2809,10 +2809,9 @@ class Registration(commands.Cog):
                             description=(
                                 "Aşağıdaki menüden düzenlemek istediğiniz rolleri seçebilirsiniz.\n\n"
                                 "**Nasıl Kullanılır:**\n"
-                                "• Menüden istediğiniz rolleri seçin\n"
-                                "• Seçtiğiniz roller size **eklenecek**\n"
-                                "• Seçmediğiniz roller **kaldırılacak**\n"
-                                "• Hiçbir rol seçmezseniz tüm roller kaldırılır\n\n"
+                                "• Menüden değiştirmek istediğiniz rolleri seçin\n"
+                                "• Seçtiğiniz rol varsa kaldırılır, yoksa eklenir\n"
+                                "• Hiçbir rol seçmezseniz hiçbir değişiklik yapılmaz\n\n"
                                 "✅ = Şu anda aktif\n"
                                 "❌ = Şu anda pasif"
                             ),
