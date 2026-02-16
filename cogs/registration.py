@@ -1945,7 +1945,7 @@ class AgeVisibilityView(discord.ui.View):
                 "**Etkinliklerden, çekilişlerden ve günün sorularından haberdar olmak ister misiniz?**\n\n"
                 "Bildirim rolleri alarak:\n"
                 "• 🎉 Etkinliklerden\n"
-                "• 🎉 Etkinlik duyurularından\n"
+                "• 🎁 Çekiliş duyurularından\n"
                 "• ❓ Günün sorusu kanalından\n"
                 "haberdar olabilirsiniz.\n\n"
                 "Rolleri almak ister misiniz?"
