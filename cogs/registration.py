@@ -1533,7 +1533,7 @@ class AgeResetTicketModal(discord.ui.Modal, title="Yaş Sıfırlama Talebi"):
     
     new_age_input = discord.ui.TextInput(
         label="Yeni Yaş (Opsiyonel)",
-        placeholder="Eğer biliyorsanız doğru yaşınızı giriniz",
+        placeholder="Yeni yaşınızı giriniz.",
         min_length=0,
         max_length=2,
         required=False,
@@ -2707,7 +2707,7 @@ class Registration(commands.Cog):
                         except:
                             pass
                 
-                @discord.ui.button(label="🏠 Anasayfaya Dön", style=discord.ButtonStyle.primary, emoji="🏠")
+                @discord.ui.button(label="Ana Sayfaya Dön", style=discord.ButtonStyle.primary, emoji="🏠")
                 async def back_to_home(self, interaction: discord.Interaction, button: discord.ui.Button):
                     """Ana ayarlar sayfasına dön"""
                     main_view = RegistrationSettingsView(
@@ -2740,7 +2740,7 @@ class Registration(commands.Cog):
                         except:
                             pass
                 
-                @discord.ui.button(label="🏠 Anasayfaya Dön", style=discord.ButtonStyle.secondary, emoji="🏠", row=1)
+                @discord.ui.button(label="Ana Sayfaya Dön", style=discord.ButtonStyle.secondary, emoji="🏠", row=1)
                 async def back_to_home(self, interaction: discord.Interaction, button: discord.ui.Button):
                     """Ana ayarlar sayfasına dön"""
                     main_view = RegistrationSettingsView(
@@ -2796,7 +2796,7 @@ class Registration(commands.Cog):
                         description="Yaş sıfırlama işleminiz iptal edildi.",
                         color=discord.Color.green()
                     )
-                    embed.set_footer(text="Anasayfaya dönmek için aşağıdaki butona tıklayın")
+                    embed.set_footer(text="Ana sayfaya dönmek için aşağıdaki butona tıklayın")
                     
                     # Geri dön view'ı
                     back_view = BackToSettingsView(
@@ -2806,7 +2806,7 @@ class Registration(commands.Cog):
                     back_view.message = self.message
                     await interaction.response.edit_message(embed=embed, view=back_view)
                 
-                @discord.ui.button(label="🏠 Anasayfaya Dön", style=discord.ButtonStyle.primary, emoji="🏠", row=1)
+                @discord.ui.button(label="Ana Sayfaya Dön", style=discord.ButtonStyle.primary, emoji="🏠", row=1)
                 async def back_to_home(self, interaction: discord.Interaction, button: discord.ui.Button):
                     """Ana ayarlar sayfasına dön"""
                     main_view = RegistrationSettingsView(
@@ -2890,9 +2890,9 @@ class Registration(commands.Cog):
                         # Sonuç mesajı
                         result_parts = []
                         if added_roles:
-                            result_parts.append(f"**✅ Eklenen Roller:**\n• {chr(10) + '• '.join(added_roles)}")
+                            result_parts.append(f"**Eklenen Roller:** {', '.join(added_roles)}")
                         if removed_roles:
-                            result_parts.append(f"**❌ Kaldırılan Roller:**\n• {chr(10) + '• '.join(removed_roles)}")
+                            result_parts.append(f"**Kaldırılan Roller:** {', '.join(removed_roles)}")
                         
                         if not result_parts:
                             result_msg = "Herhangi bir değişiklik yapılmadı."
@@ -2906,7 +2906,7 @@ class Registration(commands.Cog):
                             description=result_msg,
                             color=embed_color
                         )
-                        embed.set_footer(text="Anasayfaya dönmek için aşağıdaki butona tıklayın")
+                        embed.set_footer(text="Ana sayfaya dönmek için aşağıdaki butona tıklayın")
                         
                         # Geri dön view'ı
                         back_view = BackToSettingsView(
@@ -3104,7 +3104,7 @@ class Registration(commands.Cog):
                             value=f"Artık yaşınız kullanıcı adınızda {action_text}.",
                             inline=False
                         )
-                        embed.set_footer(text="Anasayfaya dönmek için aşağıdaki butona tıklayın")
+                        embed.set_footer(text="Ana sayfaya dönmek için aşağıdaki butona tıklayın")
                         
                         # Geri dön view'ı
                         back_view = BackToSettingsView(
