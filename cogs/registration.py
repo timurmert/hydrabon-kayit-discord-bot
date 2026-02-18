@@ -2710,8 +2710,9 @@ class Registration(commands.Cog):
                 @discord.ui.button(label="Ana Sayfaya Dön", style=discord.ButtonStyle.primary, emoji="🏠")
                 async def back_to_home(self, interaction: discord.Interaction, button: discord.ui.Button):
                     """Ana ayarlar sayfasına dön"""
+                    # interaction.user her seferinde Discord'dan gelen güncel member verisini taşır
                     main_view = RegistrationSettingsView(
-                        self.bot, self.stats_cog, self.member,
+                        self.bot, self.stats_cog, interaction.user,
                         self.name, self.age, self.current_show_age, self.message
                     )
                     embed = main_view.create_main_embed()
@@ -2743,8 +2744,9 @@ class Registration(commands.Cog):
                 @discord.ui.button(label="Ana Sayfaya Dön", style=discord.ButtonStyle.secondary, emoji="🏠", row=1)
                 async def back_to_home(self, interaction: discord.Interaction, button: discord.ui.Button):
                     """Ana ayarlar sayfasına dön"""
+                    # interaction.user her seferinde Discord'dan gelen güncel member verisini taşır
                     main_view = RegistrationSettingsView(
-                        self.bot, self.stats_cog, self.member,
+                        self.bot, self.stats_cog, interaction.user,
                         self.name, self.age, self.current_show_age, self.message
                     )
                     embed = main_view.create_main_embed()
@@ -2855,34 +2857,38 @@ class Registration(commands.Cog):
                 
                 async def callback(self, interaction: discord.Interaction):
                     await interaction.response.defer()
-                    
+
                     try:
+                        # Her interaction Discord'dan güncel member verisi getirir;
+                        # self.member eski interaction'dan kalmış olabilir.
+                        member = interaction.user
+
                         # Seçilen rol ID'leri
                         selected_role_ids = [int(value) for value in self.values]
-                        
+
                         # Sadece seçilen rolleri toggle et
                         added_roles = []
                         removed_roles = []
-                        
+
                         # Sadece seçilen roller üzerinde işlem yap
                         for role_id in selected_role_ids:
-                            role = self.member.guild.get_role(role_id)
+                            role = member.guild.get_role(role_id)
                             if not role:
                                 continue
-                            
-                            has_role = role in self.member.roles
-                            
+
+                            has_role = role in member.roles
+
                             if has_role:
                                 # Rol kullanıcıda var, kaldır (toggle)
                                 try:
-                                    await self.member.remove_roles(role, reason="Kullanıcı rol yönetimi - toggle")
+                                    await member.remove_roles(role, reason="Kullanıcı rol yönetimi - toggle")
                                     removed_roles.append(role.name)
                                 except Exception as e:
                                     print(f"[HATA] Rol kaldırılırken hata ({role.name}): {e}")
                             else:
                                 # Rol kullanıcıda yok, ekle (toggle)
                                 try:
-                                    await self.member.add_roles(role, reason="Kullanıcı rol yönetimi - toggle")
+                                    await member.add_roles(role, reason="Kullanıcı rol yönetimi - toggle")
                                     added_roles.append(role.name)
                                 except Exception as e:
                                     print(f"[HATA] Rol eklenirken hata ({role.name}): {e}")
@@ -2912,7 +2918,7 @@ class Registration(commands.Cog):
                         back_view = BackToSettingsView(
                             self.parent_view.bot,
                             self.parent_view.stats_cog,
-                            self.parent_view.member,
+                            interaction.user,
                             self.parent_view.name,
                             self.parent_view.age,
                             self.parent_view.current_show_age
@@ -3047,8 +3053,10 @@ class Registration(commands.Cog):
                         )
                         embed.set_footer(text="Değişiklikler anında uygulanacaktır")
                         
+                        # interaction.user Discord'dan gelen güncel member verisini taşır;
+                        # self.member eski interaction'dan kalıp stale olabilir
                         role_view = RoleManageViewWithBack(
-                            self.member,
+                            interaction.user,
                             self.bot, self.stats_cog, self.name, self.age, self.current_show_age
                         )
                         role_view.message = self.message
