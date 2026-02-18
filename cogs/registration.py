@@ -3226,6 +3226,136 @@ class Registration(commands.Cog):
             )
 
 
+    @app_commands.command(
+        name="isim-ekle",
+        description="Veritabanına yeni isim(ler) ekler (virgülle ayırarak birden fazla isim girilebilir)"
+    )
+    @app_commands.default_permissions(administrator=True)
+    async def add_name(
+        self,
+        interaction: discord.Interaction,
+        isimler: str
+    ):
+        """İsim veritabanına yeni kayıt ekler"""
+
+        # Yetkilendirme kontrolü (YK Üyeleri, YK Adayları ve Yöneticiler)
+        if not check_registration_permission(interaction.user):
+            return await interaction.response.send_message(
+                "❌ Bu komutu kullanma yetkiniz bulunmamaktadır! (YK Üyeleri, YK Adayları veya Yönetici yetkisi gereklidir)",
+                ephemeral=True
+            )
+
+        await interaction.response.defer(ephemeral=True)
+
+        # Virgülle ayrılmış isimleri parçala
+        raw_names = [n.strip() for n in isimler.split(",") if n.strip()]
+
+        if not raw_names:
+            return await interaction.followup.send(
+                "❌ Geçerli bir isim girilmedi.",
+                ephemeral=True
+            )
+
+        if len(raw_names) > 20:
+            return await interaction.followup.send(
+                "❌ Tek seferde en fazla 20 isim eklenebilir.",
+                ephemeral=True
+            )
+
+        # Format kontrolü: sadece harf ve boşluk
+        invalid_names = [
+            n for n in raw_names
+            if not re.match(r'^[a-zA-ZğüşöçıİĞÜŞÖÇ\s]+$', n)
+        ]
+        if invalid_names:
+            return await interaction.followup.send(
+                f"❌ Geçersiz karakter içeren isimler: {', '.join(f'`{n}`' for n in invalid_names)}\n"
+                "İsimler sadece harflerden oluşmalıdır.",
+                ephemeral=True
+            )
+
+        added: list[str] = []
+        skipped: list[str] = []
+
+        try:
+            async with aiosqlite.connect("names.db") as db:
+                for name in raw_names:
+                    formatted = turkish_title_case(name)
+                    normalized = normalize_turkish(name)
+
+                    cursor = await db.execute(
+                        "SELECT 1 FROM names WHERE name_norm_tr = ? LIMIT 1",
+                        (normalized,)
+                    )
+                    if await cursor.fetchone():
+                        skipped.append(formatted)
+                    else:
+                        await db.execute(
+                            "INSERT INTO names (name, name_norm_tr) VALUES (?, ?)",
+                            (formatted, normalized)
+                        )
+                        added.append(formatted)
+
+                await db.commit()
+        except Exception as e:
+            print(f"[HATA] İsim ekleme hatası: {type(e).__name__}: {e}")
+            return await interaction.followup.send(
+                "❌ Veritabanına yazılırken bir hata oluştu.",
+                ephemeral=True
+            )
+
+        embed = discord.Embed(
+            title="📝 İsim Ekleme Sonucu",
+            color=discord.Color.green() if added else discord.Color.orange(),
+            timestamp=discord.utils.utcnow()
+        )
+
+        if added:
+            embed.add_field(
+                name=f"✅ Eklenen İsimler ({len(added)})",
+                value=", ".join(f"`{n}`" for n in added),
+                inline=False
+            )
+        if skipped:
+            embed.add_field(
+                name=f"⚠️ Zaten Mevcut ({len(skipped)})",
+                value=", ".join(f"`{n}`" for n in skipped),
+                inline=False
+            )
+
+        embed.set_footer(text=f"İşlem yapan: {interaction.user.name}")
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+        # Log kanalına bildir (sadece yeni isim eklendiyse)
+        if not added:
+            return
+        try:
+            log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
+            if log_channel:
+                log_embed = discord.Embed(
+                    title="📝 Veritabanına İsim Eklendi",
+                    color=discord.Color.blue(),
+                    timestamp=discord.utils.utcnow()
+                )
+                log_embed.add_field(
+                    name=f"➕ Eklenen İsimler ({len(added)})",
+                    value=", ".join(f"`{n}`" for n in added),
+                    inline=False
+                )
+                log_embed.add_field(
+                    name="👮 İşlem Yapan",
+                    value=f"{interaction.user.mention} (`{interaction.user.id}`)",
+                    inline=False
+                )
+                log_embed.set_footer(
+                    text="HydRaboN İsim Veritabanı",
+                    icon_url=interaction.guild.icon.url if interaction.guild.icon else None
+                )
+                await log_channel.send(embed=log_embed)
+        except Exception as e:
+            print(f"[HATA] Log kanalına isim ekleme mesajı gönderilirken hata: {type(e).__name__}: {e}")
+
+
 async def setup(bot: commands.Bot):
     """Cog'u yükler"""
     await bot.add_cog(Registration(bot))
