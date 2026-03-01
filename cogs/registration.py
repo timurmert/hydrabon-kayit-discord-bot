@@ -502,7 +502,7 @@ class ManualTicketRoleSelectView(discord.ui.View):
         age: int,
         show_age_text: str,
     ):
-        super().__init__(timeout=120)
+        super().__init__(timeout=86400)
         self.bot = bot
         self.member = member
         self.channel = channel
@@ -594,72 +594,6 @@ class ManualTicketRoleSelectView(discord.ui.View):
             color=discord.Color.blue(),
         )
         await interaction.response.edit_message(embed=embed, view=self)
-
-
-class ManualTicketRoleConfirmView(discord.ui.View):
-    """Manuel kayıt sonrası ticket kanalında rol seçim onay view'ı"""
-
-    def __init__(
-        self,
-        bot: commands.Bot,
-        member: discord.Member,
-        channel: discord.TextChannel,
-        formatted_name: str,
-        age: int,
-        show_age_text: str,
-    ):
-        super().__init__(timeout=120)
-        self.bot = bot
-        self.member = member
-        self.channel = channel
-        self.formatted_name = formatted_name
-        self.age = age
-        self.show_age_text = show_age_text
-        self.message = None
-
-    async def on_timeout(self):
-        if self.message:
-            try:
-                for item in self.children:
-                    item.disabled = True
-                await self.message.edit(view=self)
-            except Exception:
-                pass
-        try:
-            await _close_manual_ticket(
-                self.channel, self.channel.guild, self.member,
-                self.formatted_name, self.age, self.show_age_text,
-            )
-        except Exception as e:
-            print(f"[HATA] Timeout'ta ticket kapatılırken hata: {type(e).__name__}: {e}")
-
-    @discord.ui.button(label="Evet", style=discord.ButtonStyle.success, emoji="✅")
-    async def yes_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.stop()
-        embed = discord.Embed(
-            title="🔔 Bildirim Rollerini Seçin",
-            description=(
-                f"{self.member.mention}, almak istediğin bildirim rollerini seç.\n"
-                "Seçtikten sonra **Tamamla** butonuna tıkla.\n\n"
-                "**Seçilen Roller:** 0/3"
-            ),
-            color=discord.Color.blue(),
-        )
-        view = ManualTicketRoleSelectView(
-            self.bot, self.member, self.channel,
-            self.formatted_name, self.age, self.show_age_text,
-        )
-        view.message = interaction.message
-        await interaction.response.edit_message(embed=embed, view=view)
-
-    @discord.ui.button(label="Hayır", style=discord.ButtonStyle.secondary, emoji="❌")
-    async def no_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.stop()
-        await interaction.response.defer()
-        await _close_manual_ticket(
-            self.channel, interaction.guild, self.member,
-            self.formatted_name, self.age, self.show_age_text,
-        )
 
 
 class ManualRegistrationModal(discord.ui.Modal, title="Manuel Kayıt Formu"):
@@ -873,24 +807,21 @@ class ManualRegistrationModal(discord.ui.Modal, title="Manuel Kayıt Formu"):
             except Exception as e:
                 print(f"[HATA] Ticket mesajı güncellenirken hata: {type(e).__name__}: {e}")
             
-            # Ticket kanalında rol seçimi sorusu göster
+            # Ticket kanalında direkt rol seçimi göster
             try:
-                role_confirm_embed = discord.Embed(
-                    title="🔔 Bildirim Rolleri",
+                role_select_embed = discord.Embed(
+                    title="🔔 Bildirim Rollerini Seçin",
                     description=(
-                        f"{self.member.mention}\n\n"
-                        "**Etkinliklerden, çekilişlerden ve günün sorularından haberdar olmak ister misiniz?**\n\n"
-                        "• 🎉 Etkinlik Bildirimleri\n"
-                        "• 🎁 Çekiliş Bildirimleri\n"
-                        "• ❓ Günün Sorusu Bildirimleri\n\n"
-                        "Rolleri almak ister misiniz?"
+                        f"{self.member.mention}, almak istediğin bildirim rollerini seç.\n"
+                        "Seçtikten sonra **Tamamla** butonuna tıkla.\n\n"
+                        "**Seçilen Roller:** 0/3"
                     ),
                     color=discord.Color.blue(),
                 )
-                role_confirm_embed.set_footer(
-                    text="2 dakika içinde cevap verilmezse ticket otomatik kapanacak"
+                role_select_embed.set_footer(
+                    text="24 saat içinde işlem yapılmazsa ticket otomatik kapanacak"
                 )
-                view = ManualTicketRoleConfirmView(
+                view = ManualTicketRoleSelectView(
                     bot=self.bot,
                     member=self.member,
                     channel=interaction.channel,
@@ -898,7 +829,7 @@ class ManualRegistrationModal(discord.ui.Modal, title="Manuel Kayıt Formu"):
                     age=age,
                     show_age_text=show_age_text,
                 )
-                msg = await interaction.channel.send(embed=role_confirm_embed, view=view)
+                msg = await interaction.channel.send(embed=role_select_embed, view=view)
                 view.message = msg
             except Exception as e:
                 print(f"[HATA] Rol seçimi embed'i gönderilirken hata: {type(e).__name__}: {e}")
