@@ -71,6 +71,34 @@ def turkish_title_case(text: str) -> str:
     
     return " ".join(result_words)
 
+async def check_name_in_database(name: str) -> bool:
+    """İsmin veritabanında olup olmadığını kontrol eder"""
+    try:
+        normalized = normalize_turkish(name)
+
+        # Birleşik isimler için kontrol (örn: "Ahmet Mehmet")
+        name_parts = normalized.split()
+
+        async with aiosqlite.connect("names.db") as db:
+            # Her isim parçasını kontrol et
+            for part in name_parts:
+                cursor = await db.execute(
+                    "SELECT 1 FROM names WHERE name_norm_tr = ? LIMIT 1",
+                    (part,)
+                )
+                result = await cursor.fetchone()
+
+                # Eğer herhangi bir parça bulunamazsa False döndür
+                if result is None:
+                    return False
+
+        # Tüm parçalar bulunduysa True döndür
+        return True
+    except Exception as e:
+        print(f"[HATA] Veritabanı kontrol hatası: {type(e).__name__}: {e}")
+        # Hata durumunda güvenlik için False döndür
+        return False
+
 class RegistrationModal(discord.ui.Modal, title="Kayıt Formu"):
     """Kayıt için modal (pop-up) formu"""
     
@@ -211,7 +239,7 @@ class RegistrationModal(discord.ui.Modal, title="Kayıt Formu"):
             )
         
         # İsim veritabanında var mı kontrol et
-        name_valid = await self.check_name_in_database(name)
+        name_valid = await check_name_in_database(name)
         
         if not name_valid:
             # Başarısız - İsim veritabanında yok
@@ -251,34 +279,6 @@ class RegistrationModal(discord.ui.Modal, title="Kayıt Formu"):
         view = AgeVisibilityView(self.bot, member, name, age)
         message = await interaction.followup.send(embed=embed, view=view, ephemeral=True)
         view.message = message
-    
-    async def check_name_in_database(self, name: str) -> bool:
-        """İsmin veritabanında olup olmadığını kontrol eder"""
-        try:
-            normalized = normalize_turkish(name)
-            
-            # Birleşik isimler için kontrol (örn: "Ahmet Mehmet")
-            name_parts = normalized.split()
-            
-            async with aiosqlite.connect("names.db") as db:
-                # Her isim parçasını kontrol et
-                for part in name_parts:
-                    cursor = await db.execute(
-                        "SELECT 1 FROM names WHERE name_norm_tr = ? LIMIT 1",
-                        (part,)
-                    )
-                    result = await cursor.fetchone()
-                    
-                    # Eğer herhangi bir parça bulunamazsa False döndür
-                    if result is None:
-                        return False
-            
-            # Tüm parçalar bulunduysa True döndür
-            return True
-        except Exception as e:
-            print(f"[HATA] Veritabanı kontrol hatası: {type(e).__name__}: {e}")
-            # Hata durumunda güvenlik için False döndür
-            return False
     
     async def on_error(self, interaction: discord.Interaction, error: Exception):
         """Modal hata durumunda"""
@@ -1131,7 +1131,110 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
                     "❌ Geçersiz yaş formatı! Lütfen sadece sayı giriniz.",
                     ephemeral=True
                 )
-            
+
+            # İsim format kontrolü (sadece harf ve boşluk)
+            if not re.match(r'^[a-zA-ZğüşöçıİĞÜŞÖÇ\s]+$', name):
+                await self.log_manual_registration_attempt(
+                    interaction, name, age_str, show_age_str, False,
+                    "İsimde geçersiz karakterler var (Manuel kayıt talebi)"
+                )
+                await self.disable_origin_buttons("Geçersiz isim formatı! İsim sadece harflerden oluşmalıdır.")
+                return await interaction.followup.send(
+                    "❌ İsim sadece harflerden oluşmalıdır!",
+                    ephemeral=True
+                )
+
+            # İsim veritabanında var mı kontrol et - varsa otomatik kayıt yap
+            name_valid = await check_name_in_database(name)
+
+            if name_valid:
+                # İsim veritabanında bulundu - otomatik kayıt akışını başlat
+                # Kayıt log'unu gönder (otomatik kayıt olarak)
+                try:
+                    log_channel = interaction.guild.get_channel(REGISTRATION_LOG_CHANNEL_ID)
+                    if log_channel:
+                        log_embed = discord.Embed(
+                            title="✅ Yetkili Çağır → Otomatik Kayıt",
+                            color=discord.Color.green(),
+                            timestamp=discord.utils.utcnow()
+                        )
+                        log_embed.add_field(
+                            name="👤 Kullanıcı Bilgileri",
+                            value=(
+                                f"**Kullanıcı:** {interaction.user.mention}\n"
+                                f"**Kullanıcı Adı:** {interaction.user.name}\n"
+                                f"**Kullanıcı ID:** `{interaction.user.id}`"
+                            ),
+                            inline=False
+                        )
+                        log_embed.add_field(
+                            name="📝 Kayıt Bilgileri",
+                            value=(
+                                f"**İsim:** {name}\n"
+                                f"**Yaş:** {age_str}\n"
+                                f"**Yaş Görünürlüğü:** {show_age_text}"
+                            ),
+                            inline=False
+                        )
+                        log_embed.add_field(
+                            name="ℹ️ Durum",
+                            value="İsim veritabanında bulundu. Yetkili çağır yerine otomatik kayıt başlatıldı.",
+                            inline=False
+                        )
+                        log_embed.set_thumbnail(url=interaction.user.display_avatar.url)
+                        log_embed.set_footer(
+                            text="HydRaboN Kayıt Sistemi",
+                            icon_url=interaction.guild.icon.url if interaction.guild.icon else None
+                        )
+                        await log_channel.send(embed=log_embed)
+                except Exception as e:
+                    print(f"[HATA] Otomatik kayıt log'u gönderilirken hata: {type(e).__name__}: {e}")
+
+                member = interaction.user
+                formatted_name = turkish_title_case(name)
+
+                # Bildirim rolleri sorusunu göster (show_age zaten modaldan alındı)
+                embed = discord.Embed(
+                    title="✅ İsim Doğrulandı - Otomatik Kayıt",
+                    description=(
+                        f"**Otomatik kayıt yapılıyor!**\n\n"
+                        f"**İsim:** {formatted_name}\n"
+                        f"**Yaş:** {age}\n"
+                        f"**Yaş Görünürlüğü:** {show_age_text}\n\n"
+                        "🔔 **Bildirim rolleri almak ister misiniz?**\n\n"
+                        "Bildirim rolleri alarak:\n"
+                        "• 🎉 Etkinliklerden\n"
+                        "• 🎁 Çekiliş duyurularından\n"
+                        "• ❓ Günün sorusu kanalından\n"
+                        "haberdar olabilirsiniz."
+                    ),
+                    color=discord.Color.green()
+                )
+                embed.set_footer(text="İsterseniz rolleri daha sonra da alabilirsiniz")
+
+                view = NotificationRoleConfirmView(self.bot, member, name, age, show_age)
+                message = await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+                view.message = message
+
+                # Orijinal mesajdaki butonları güncelle
+                if self.origin_view and self.origin_message:
+                    try:
+                        for item in self.origin_view.children:
+                            item.disabled = True
+                        success_embed = discord.Embed(
+                            title="✅ Otomatik Kayıt Tamamlandı",
+                            description="Otomatik kayıt işlemi başarıyla tamamlandı.",
+                            color=discord.Color.green()
+                        )
+                        await self.origin_message.edit(embed=success_embed, view=self.origin_view)
+                        self.origin_view.stop()
+                    except Exception as e:
+                        print(f"[HATA] Orijinal mesaj güncellenirken hata: {type(e).__name__}: {e}")
+
+                return
+
+            # İsim veritabanında bulunamadı - ticket akışına devam et
+
             # Kategoriyi al
             category = interaction.guild.get_channel(TICKET_CATEGORY_ID)
             
