@@ -1197,7 +1197,7 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
                 embed = discord.Embed(
                     title="✅ İsim Doğrulandı - Otomatik Kayıt",
                     description=(
-                        f"**İsminiz veritabanında bulundu!** Otomatik kayıt yapılıyor.\n\n"
+                        f"**Otomatik kayıt yapılıyor!**\n\n"
                         f"**İsim:** {formatted_name}\n"
                         f"**Yaş:** {age}\n"
                         f"**Yaş Görünürlüğü:** {show_age_text}\n\n"
@@ -1222,8 +1222,8 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
                         for item in self.origin_view.children:
                             item.disabled = True
                         success_embed = discord.Embed(
-                            title="✅ Otomatik Kayıt Başlatıldı",
-                            description="İsminiz veritabanında bulundu, otomatik kayıt işlemi başlatıldı.",
+                            title="✅ Otomatik Kayıt Tamamlandı",
+                            description="Otomatik kayıt işlemi başarıyla tamamlandı.",
                             color=discord.Color.green()
                         )
                         await self.origin_message.edit(embed=success_embed, view=self.origin_view)
