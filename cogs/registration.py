@@ -198,10 +198,18 @@ class RegistrationModal(discord.ui.Modal, title="Kayıt Formu"):
     async def on_submit(self, interaction: discord.Interaction):
         """Modal submit edildiğinde çalışır"""
         await interaction.response.defer(ephemeral=True)
-        
+
+        # Zaten kayıtlı mı kontrolü
+        registered_role = interaction.guild.get_role(REGISTERED_ROLE_ID)
+        if registered_role and registered_role in interaction.user.roles:
+            return await interaction.followup.send(
+                "❌ Zaten kayıtlısınız! Ayarlarınızı değiştirmek için `/kayit-ayarlari` komutunu kullanabilirsiniz.",
+                ephemeral=True
+            )
+
         name = self.name_input.value.strip()
         age_str = self.age_input.value.strip()
-        
+
         # Yaş kontrolü
         try:
             age = int(age_str)
@@ -1092,11 +1100,20 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
     async def on_submit(self, interaction: discord.Interaction):
         """Modal submit edildiğinde ticket oluştur"""
         await interaction.response.defer(ephemeral=True)
-        
+
+        # Zaten kayıtlı mı kontrolü
+        registered_role = interaction.guild.get_role(REGISTERED_ROLE_ID)
+        if registered_role and registered_role in interaction.user.roles:
+            await self.disable_origin_buttons("Zaten kayıtlısınız!")
+            return await interaction.followup.send(
+                "❌ Zaten kayıtlısınız! Ayarlarınızı değiştirmek için `/kayit-ayarlari` komutunu kullanabilirsiniz.",
+                ephemeral=True
+            )
+
         name = self.name_input.value.strip()
         age_str = self.age_input.value.strip()
         show_age_str = self.show_age_input.value.strip().lower()
-        
+
         # Yaş görünürlüğünü parse et
         if show_age_str in ["evet", "e", "yes", "y"]:
             show_age = True
@@ -1147,8 +1164,12 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
             # İsim veritabanında var mı kontrol et - varsa otomatik kayıt yap
             name_valid = await check_name_in_database(name)
 
-            if name_valid:
-                # İsim veritabanında bulundu - otomatik kayıt akışını başlat
+            # Hesap yaşı kontrolü - 14 günden yeni hesaplar otomatik kayıt olamaz
+            account_age = discord.utils.utcnow() - interaction.user.created_at
+            is_new_account = account_age.days < 14
+
+            if name_valid and not is_new_account:
+                # İsim veritabanında bulundu ve hesap yeterince eski - otomatik kayıt akışını başlat
                 # Kayıt log'unu gönder (otomatik kayıt olarak)
                 try:
                     log_channel = interaction.guild.get_channel(REGISTRATION_LOG_CHANNEL_ID)
@@ -1233,7 +1254,7 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
 
                 return
 
-            # İsim veritabanında bulunamadı - ticket akışına devam et
+            # İsim veritabanında bulunamadı VEYA yeni hesap - ticket akışına devam et
 
             # Kategoriyi al
             category = interaction.guild.get_channel(TICKET_CATEGORY_ID)
@@ -2473,7 +2494,15 @@ class RegistrationButton(discord.ui.View):
         """Kayıt Ol butonuna tıklandığında"""
         try:
             member = interaction.user
-            
+
+            # Zaten kayıtlı mı kontrolü
+            registered_role = member.guild.get_role(REGISTERED_ROLE_ID)
+            if registered_role and registered_role in member.roles:
+                return await interaction.response.send_message(
+                    "❌ Zaten kayıtlısınız! Ayarlarınızı değiştirmek için `/kayit-ayarlari` komutunu kullanabilirsiniz.",
+                    ephemeral=True
+                )
+
             # Hesap yaşı kontrolü (14 gün)
             account_age = discord.utils.utcnow() - member.created_at
             if account_age.days < 14:
@@ -2516,7 +2545,15 @@ class RegistrationButton(discord.ui.View):
         """Yetkili Çağır butonuna tıklandığında"""
         try:
             member = interaction.user
-            
+
+            # Zaten kayıtlı mı kontrolü
+            registered_role = member.guild.get_role(REGISTERED_ROLE_ID)
+            if registered_role and registered_role in member.roles:
+                return await interaction.response.send_message(
+                    "❌ Zaten kayıtlısınız! Ayarlarınızı değiştirmek için `/kayit-ayarlari` komutunu kullanabilirsiniz.",
+                    ephemeral=True
+                )
+
             embed = discord.Embed(
                 title="⚠️ Yetkili Çağırma",
                 description=(
