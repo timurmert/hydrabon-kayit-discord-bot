@@ -3400,6 +3400,178 @@ class Registration(commands.Cog):
             )
     
     @app_commands.command(
+        name="kayit-yap",
+        description="Yönetici olarak bir kullanıcıyı manuel kayıt eder"
+    )
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.describe(
+        kullanici="Kayıt edilecek kullanıcı",
+        isim="Kullanıcının ismi",
+        yas="Kullanıcının yaşı (13-99)",
+        yas_goster="Yaş nickname'de görünsün mü?"
+    )
+    @app_commands.choices(yas_goster=[
+        app_commands.Choice(name="Evet", value="evet"),
+        app_commands.Choice(name="Hayır", value="hayir"),
+    ])
+    async def admin_register(
+        self,
+        interaction: discord.Interaction,
+        kullanici: discord.Member,
+        isim: str,
+        yas: int,
+        yas_goster: app_commands.Choice[str]
+    ):
+        """Yönetici yetkisiyle bir kullanıcıyı doğrudan kayıt eder"""
+
+        # Sadece yönetici kontrolü
+        if not interaction.user.guild_permissions.administrator:
+            return await interaction.response.send_message(
+                "❌ Bu komutu kullanma yetkiniz bulunmamaktadır! (Yönetici yetkisi gereklidir)",
+                ephemeral=True
+            )
+
+        await interaction.response.defer(ephemeral=True)
+
+        # Yaş doğrulaması
+        if yas < 13 or yas > 99:
+            return await interaction.followup.send(
+                "❌ Yaş 13-99 arasında olmalıdır!",
+                ephemeral=True
+            )
+
+        # İsim formatı kontrolü (sadece harf ve boşluk)
+        if not re.match(r'^[a-zA-ZğüşöçıİĞÜŞÖÇ\s]+$', isim):
+            return await interaction.followup.send(
+                "❌ İsim sadece harflerden oluşmalıdır!",
+                ephemeral=True
+            )
+
+        # İsim veritabanı kontrolü
+        name_valid = await check_name_in_database(isim)
+        if not name_valid:
+            return await interaction.followup.send(
+                "❌ Girilen isim veritabanında bulunamadı! Önce `/isim-ekle` komutuyla ekleyin.",
+                ephemeral=True
+            )
+
+        show_age = yas_goster.value == "evet"
+
+        try:
+            guild = interaction.guild
+            formatted_name = turkish_title_case(isim)
+            new_nickname = f"{formatted_name} | {yas}" if show_age else formatted_name
+
+            # Rolleri al
+            unregistered_role = guild.get_role(UNREGISTERED_ROLE_ID)
+            registered_role = guild.get_role(REGISTERED_ROLE_ID)
+
+            if not registered_role:
+                return await interaction.followup.send(
+                    "❌ Kayıtlı rolü bulunamadı!",
+                    ephemeral=True
+                )
+
+            # Kayıtsız rolünü kaldır
+            if unregistered_role and unregistered_role in kullanici.roles:
+                await kullanici.remove_roles(unregistered_role, reason=f"Yetkili kayıt - {interaction.user}")
+
+            # Kayıtlı rolünü ver
+            await kullanici.add_roles(registered_role, reason=f"Yetkili kayıt - {interaction.user}")
+
+            # Nickname'i ayarla
+            try:
+                await kullanici.edit(nick=new_nickname, reason=f"Yetkili kayıt - {interaction.user}")
+            except discord.Forbidden:
+                print(f"[UYARI] {kullanici} için nickname ayarlanamadı (yetki yok)")
+
+            # İstatistikleri kaydet
+            try:
+                stats_cog = self.bot.get_cog("RegistrationStats")
+                if stats_cog:
+                    await stats_cog.add_registration(
+                        user_id=str(kullanici.id),
+                        username=str(kullanici),
+                        name=formatted_name,
+                        age=yas,
+                        show_age=show_age
+                    )
+            except Exception as e:
+                print(f"[HATA] İstatistik veritabanına kaydedilirken hata: {type(e).__name__}: {e}")
+
+            # Başarı mesajı
+            show_age_text = "✅ Evet" if show_age else "❌ Hayır"
+            success_embed = discord.Embed(
+                title="✅ Kayıt Başarılı",
+                description=(
+                    f"**Kullanıcı:** {kullanici.mention}\n"
+                    f"**İsim:** {formatted_name}\n"
+                    f"**Yaş:** {yas}\n"
+                    f"**Yaş Durumu:** {show_age_text}\n"
+                    f"**Nickname:** {new_nickname}\n"
+                    f"**Kayıt Eden:** {interaction.user.mention}"
+                ),
+                color=discord.Color.green()
+            )
+            await interaction.followup.send(embed=success_embed, ephemeral=True)
+
+            # Log kanalına bildirim
+            try:
+                log_channel = guild.get_channel(LOG_CHANNEL_ID)
+                if log_channel:
+                    log_embed = discord.Embed(
+                        title="✅ Yetkili Kayıt (/kayit-yap)",
+                        description=f"{kullanici.mention} yetkili tarafından kaydedildi!",
+                        color=discord.Color.green(),
+                        timestamp=discord.utils.utcnow()
+                    )
+                    log_embed.add_field(
+                        name="👤 Kullanıcı Bilgileri",
+                        value=f"**Kullanıcı:** {kullanici.mention}\n**ID:** `{kullanici.id}`\n**Tag:** {kullanici}",
+                        inline=False
+                    )
+                    log_embed.add_field(
+                        name="📋 Kayıt Bilgileri",
+                        value=f"**İsim:** {formatted_name}\n**Yaş:** {yas}\n**Yaş Durumu:** {show_age_text}\n**Yeni Nickname:** {new_nickname}",
+                        inline=False
+                    )
+                    log_embed.add_field(
+                        name="👮 Yetkili",
+                        value=f"**Kaydeden:** {interaction.user.mention}\n**ID:** `{interaction.user.id}`",
+                        inline=False
+                    )
+                    log_embed.add_field(
+                        name="🎭 Rol Değişiklikleri",
+                        value=f"**Verilen:** <@&{REGISTERED_ROLE_ID}>\n**Alınan:** <@&{UNREGISTERED_ROLE_ID}>",
+                        inline=False
+                    )
+                    log_embed.set_thumbnail(url=kullanici.display_avatar.url)
+                    log_embed.set_footer(text="HydRaboN Yetkili Kayıt Sistemi", icon_url=guild.icon.url if guild.icon else None)
+                    await log_channel.send(embed=log_embed)
+            except Exception as e:
+                print(f"[HATA] Log kanalına mesaj gönderilirken hata: {type(e).__name__}: {e}")
+
+            # Hoş geldin mesajı gönder
+            try:
+                welcome_cog = self.bot.get_cog("Welcome")
+                if welcome_cog:
+                    await welcome_cog.send_welcome_message(kullanici)
+            except Exception as e:
+                print(f"[HATA] Hoş geldin mesajı gönderilirken hata: {type(e).__name__}: {e}")
+
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "❌ Yeterli yetkim yok! Bot rolü hedef kullanıcıdan daha üstte olmalı.",
+                ephemeral=True
+            )
+        except Exception as e:
+            print(f"[HATA] Yetkili kayıt hatası: {type(e).__name__}: {e}")
+            await interaction.followup.send(
+                f"❌ Kayıt sırasında bir hata oluştu: {str(e)}",
+                ephemeral=True
+            )
+
+    @app_commands.command(
         name="isim-kontrol",
         description="Veritabanında isim kontrolü yapar"
     )
