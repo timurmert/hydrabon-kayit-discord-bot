@@ -1110,6 +1110,57 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
                 ephemeral=True
             )
 
+        # Hesap yaşı kontrolü - 14 günden yeni hesaplar yetkili çağıramaz
+        account_age = discord.utils.utcnow() - interaction.user.created_at
+        if account_age.days < 14:
+            await self.disable_origin_buttons("Hesabınız 14 günlük olmadığı için bu özelliği kullanamazsınız.")
+            # Başarısız denemeyi logla
+            try:
+                guild = interaction.guild
+                log_channel = guild.get_channel(REGISTRATION_LOG_CHANNEL_ID)
+                if log_channel:
+                    member = interaction.user
+                    embed = discord.Embed(
+                        title="🚫 Yeni Hesap - Başarısız Deneme",
+                        color=discord.Color.dark_red(),
+                        timestamp=discord.utils.utcnow()
+                    )
+                    embed.add_field(
+                        name="👤 Kullanıcı Bilgileri",
+                        value=(
+                            f"**Kullanıcı:** {member.mention}\n"
+                            f"**Kullanıcı Adı:** {member.name}\n"
+                            f"**Kullanıcı ID:** `{member.id}`"
+                        ),
+                        inline=False
+                    )
+                    embed.add_field(
+                        name="📅 Hesap Bilgileri",
+                        value=(
+                            f"**Hesap Oluşturulma:** {member.created_at.strftime('%d.%m.%Y %H:%M')}\n"
+                            f"**Hesap Yaşı:** {account_age.days} gün\n"
+                            f"**Kalan Süre:** {14 - account_age.days} gün"
+                        ),
+                        inline=False
+                    )
+                    embed.add_field(
+                        name="⚠️ Başarısızlık Nedeni",
+                        value="14 günlük olmayan yeni hesap — **Destek Talebi (Modal)** denemesi engellendi",
+                        inline=False
+                    )
+                    embed.set_footer(
+                        text="HydRaboN Kayıt Sistemi",
+                        icon_url=guild.icon.url if guild.icon else None
+                    )
+                    embed.set_thumbnail(url=member.display_avatar.url)
+                    await log_channel.send(embed=embed)
+            except Exception as e:
+                print(f"[HATA] Yeni hesap denemesi loglanırken hata: {type(e).__name__}: {e}")
+            return await interaction.followup.send(
+                "❌ Discord hesabınız 14 günlük olmadığı için bu özelliği kullanamazsınız.",
+                ephemeral=True
+            )
+
         name = self.name_input.value.strip()
         age_str = self.age_input.value.strip()
         show_age_str = self.show_age_input.value.strip().lower()
@@ -1121,7 +1172,7 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
         else:
             show_age = False
             show_age_text = "❌ Hayır"
-        
+
         try:
             # Yaş doğrulaması
             try:
@@ -1164,11 +1215,7 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
             # İsim veritabanında var mı kontrol et - varsa otomatik kayıt yap
             name_valid = await check_name_in_database(name)
 
-            # Hesap yaşı kontrolü - 14 günden yeni hesaplar otomatik kayıt olamaz
-            account_age = discord.utils.utcnow() - interaction.user.created_at
-            is_new_account = account_age.days < 14
-
-            if name_valid and not is_new_account:
+            if name_valid:
                 # İsim veritabanında bulundu ve hesap yeterince eski - otomatik kayıt akışını başlat
                 # Kayıt log'unu gönder (otomatik kayıt olarak)
                 try:
@@ -1254,7 +1301,7 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
 
                 return
 
-            # İsim veritabanında bulunamadı VEYA yeni hesap - ticket akışına devam et
+            # İsim veritabanında bulunamadı - ticket akışına devam et
 
             # Kategoriyi al
             category = interaction.guild.get_channel(TICKET_CATEGORY_ID)
@@ -2364,41 +2411,6 @@ class AgeVisibilityView(discord.ui.View):
         self.stop()
 
 
-class NewAccountSupportView(discord.ui.View):
-    """Yeni hesaplar için yetkili çağırma butonu"""
-    
-    def __init__(self, bot: commands.Bot):
-        super().__init__(timeout=300)  # 5 dakika timeout - kullanıcıya formu doldurması için yeterli süre
-        self.bot = bot
-        self.message = None
-    
-    async def on_timeout(self):
-        """Timeout olduğunda butonları devre dışı bırak"""
-        if self.message:
-            try:
-                for item in self.children:
-                    item.disabled = True
-                await self.message.edit(view=self)
-            except:
-                pass
-    
-    @discord.ui.button(label="Yetkili Çağır", style=discord.ButtonStyle.danger, emoji="⚠️")
-    async def support_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Yetkili çağır butonuna basıldığında modal aç"""
-        try:
-            modal = SupportTicketModal(self.bot, origin_view=self, origin_message=self.message)
-            await interaction.response.send_modal(modal)
-        except Exception as e:
-            print(f"[HATA] Destek modal açılırken hata: {type(e).__name__}: {e}")
-            try:
-                await interaction.response.send_message(
-                    "❌ Form açılırken bir hata oluştu. Lütfen tekrar deneyiniz.",
-                    ephemeral=True
-                )
-            except:
-                print("[HATA] Kullanıcıya destek modal hatası mesajı gönderilemedi!")
-
-
 class SupportConfirmView(discord.ui.View):
     """Yetkili çağırma onay butonu"""
     
@@ -2490,6 +2502,64 @@ class RegistrationButton(discord.ui.View):
             row=0
         ))
         
+    async def _log_new_account_attempt(
+        self,
+        interaction: discord.Interaction,
+        action: str,
+        account_age_days: int
+    ):
+        """Yeni hesapların engellenen denemelerini log kanalına gönderir"""
+        try:
+            guild = interaction.guild
+            log_channel = guild.get_channel(REGISTRATION_LOG_CHANNEL_ID)
+
+            if not log_channel:
+                return
+
+            member = interaction.user
+            embed = discord.Embed(
+                title="🚫 Yeni Hesap - Başarısız Deneme",
+                color=discord.Color.dark_red(),
+                timestamp=discord.utils.utcnow()
+            )
+
+            embed.add_field(
+                name="👤 Kullanıcı Bilgileri",
+                value=(
+                    f"**Kullanıcı:** {member.mention}\n"
+                    f"**Kullanıcı Adı:** {member.name}\n"
+                    f"**Kullanıcı ID:** `{member.id}`"
+                ),
+                inline=False
+            )
+
+            embed.add_field(
+                name="📅 Hesap Bilgileri",
+                value=(
+                    f"**Hesap Oluşturulma:** {member.created_at.strftime('%d.%m.%Y %H:%M')}\n"
+                    f"**Hesap Yaşı:** {account_age_days} gün\n"
+                    f"**Kalan Süre:** {14 - account_age_days} gün"
+                ),
+                inline=False
+            )
+
+            embed.add_field(
+                name="⚠️ Başarısızlık Nedeni",
+                value=f"14 günlük olmayan yeni hesap — **{action}** denemesi engellendi",
+                inline=False
+            )
+
+            embed.set_footer(
+                text="HydRaboN Kayıt Sistemi",
+                icon_url=guild.icon.url if guild.icon else None
+            )
+            embed.set_thumbnail(url=member.display_avatar.url)
+
+            await log_channel.send(embed=embed)
+
+        except Exception as e:
+            print(f"[HATA] Yeni hesap denemesi loglanırken hata: {type(e).__name__}: {e}")
+
     async def register_button_callback(self, interaction: discord.Interaction):
         """Kayıt Ol butonuna tıklandığında"""
         try:
@@ -2506,27 +2576,23 @@ class RegistrationButton(discord.ui.View):
             # Hesap yaşı kontrolü (14 gün)
             account_age = discord.utils.utcnow() - member.created_at
             if account_age.days < 14:
-                # Hesap 14 günden yeni - Manuel kayıt için ticket açmaya yönlendir
+                # Başarısız denemeyi logla
+                await self._log_new_account_attempt(
+                    interaction, "Kayıt Ol", account_age.days
+                )
+                # Hesap 14 günden yeni - Kayıt ve yetkili çağırma engellendi
                 embed = discord.Embed(
                     title="⏰ Hesap Yaşı Yetersiz",
                     description=(
-                        "❌ **Otomatik kayıt olamazsınız!**\n\n"
+                        "❌ **Kayıt olamazsınız!**\n\n"
                         f"Discord hesabınız **{account_age.days} gün** önce oluşturulmuş.\n"
-                        f"Otomatik kayıt olabilmek için hesabınızın en az **14 gün** eski olması gerekmektedir.\n\n"
-                        f"⏳ **Kalan Süre:** {14 - account_age.days} gün\n\n"
-                        "🎫 **Manuel Kayıt İçin:**\n"
-                        "Eğer özel bir durumunuz varsa veya manuel kayıt olmak istiyorsanız, "
-                        "aşağıdaki **Yetkili Çağır** butonuna tıklayarak destek talebi oluşturabilirsiniz. "
-                        "Yetkili ekibimiz sizinle ilgilenecektir."
+                        f"Kayıt olabilmek için hesabınızın en az **14 gün** eski olması gerekmektedir.\n\n"
+                        f"⏳ **Kalan Süre:** {14 - account_age.days} gün"
                     ),
                     color=discord.Color.red()
                 )
                 embed.set_footer(text=f"Hesap Oluşturulma: {member.created_at.strftime('%d.%m.%Y')}")
-                
-                view = NewAccountSupportView(self.bot)
-                await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-                view.message = await interaction.original_response()
-                return
+                return await interaction.response.send_message(embed=embed, ephemeral=True)
             
             # Tüm kontroller geçti - Kayıt modal'ını aç
             modal = RegistrationModal(self.bot)
@@ -2554,6 +2620,26 @@ class RegistrationButton(discord.ui.View):
                     ephemeral=True
                 )
 
+            # Hesap yaşı kontrolü (14 gün) - Yeni hesaplar yetkili çağıramaz
+            account_age = discord.utils.utcnow() - member.created_at
+            if account_age.days < 14:
+                # Başarısız denemeyi logla
+                await self._log_new_account_attempt(
+                    interaction, "Yetkili Çağır", account_age.days
+                )
+                embed = discord.Embed(
+                    title="⏰ Hesap Yaşı Yetersiz",
+                    description=(
+                        "❌ **Bu özelliği kullanamazsınız!**\n\n"
+                        f"Discord hesabınız **{account_age.days} gün** önce oluşturulmuş.\n"
+                        f"Yetkili çağırabilmek için hesabınızın en az **14 gün** eski olması gerekmektedir.\n\n"
+                        f"⏳ **Kalan Süre:** {14 - account_age.days} gün"
+                    ),
+                    color=discord.Color.red()
+                )
+                embed.set_footer(text=f"Hesap Oluşturulma: {member.created_at.strftime('%d.%m.%Y')}")
+                return await interaction.response.send_message(embed=embed, ephemeral=True)
+
             embed = discord.Embed(
                 title="⚠️ Yetkili Çağırma",
                 description=(
@@ -2563,7 +2649,7 @@ class RegistrationButton(discord.ui.View):
                 ),
                 color=discord.Color.orange()
             )
-            
+
             view = SupportConfirmView(self.bot)
             await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
             view.message = await interaction.original_response()
