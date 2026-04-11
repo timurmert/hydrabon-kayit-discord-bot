@@ -1,6 +1,6 @@
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 import aiosqlite
 import re
 import asyncio
@@ -25,7 +25,93 @@ ROLE_SELECTION_CHANNEL_ID = 1432764482547089570  # Rol alma kanalı
 # Yetki
 OWNER_ID = 315888596437696522  # Bot sahibinin ID'si
 
+# Bekleyen kayıt ticket'larının (rol seçimi açık olanlar) izlendiği veritabanı
+KAYIT_TICKETS_DB = "kayit_tickets.db"
+PENDING_TICKET_TTL_SECONDS = 86400  # 24 saat - rol seçimi tamamlanmadığında ticket bu süre sonra kapatılır
+
 # =========================================
+
+# Aynı kanalın paralel yollardan iki kez kapatılmasını engellemek için runtime guard
+_closing_channels: set[int] = set()
+
+
+async def _init_pending_tickets_db() -> None:
+    """Bekleyen kayıt ticket'ları için veritabanı ve tabloyu hazırlar."""
+    async with aiosqlite.connect(KAYIT_TICKETS_DB) as db:
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pending_role_tickets (
+                channel_id     INTEGER PRIMARY KEY,
+                guild_id       INTEGER NOT NULL,
+                member_id      INTEGER NOT NULL,
+                formatted_name TEXT    NOT NULL,
+                age            INTEGER NOT NULL,
+                show_age_text  TEXT    NOT NULL,
+                expires_at     INTEGER NOT NULL
+            )
+            """
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pending_role_tickets_expires_at "
+            "ON pending_role_tickets(expires_at)"
+        )
+        await db.commit()
+
+
+async def _register_pending_ticket(
+    channel_id: int,
+    guild_id: int,
+    member_id: int,
+    formatted_name: str,
+    age: int,
+    show_age_text: str,
+    expires_at: int,
+) -> None:
+    """Açılan bir kayıt ticket'ını sweeper'ın izlemesi için kaydeder."""
+    try:
+        async with aiosqlite.connect(KAYIT_TICKETS_DB) as db:
+            await db.execute(
+                """
+                INSERT OR REPLACE INTO pending_role_tickets
+                (channel_id, guild_id, member_id, formatted_name, age, show_age_text, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (channel_id, guild_id, member_id, formatted_name, age, show_age_text, expires_at),
+            )
+            await db.commit()
+    except Exception as e:
+        print(f"[HATA] Bekleyen ticket kaydedilirken hata: {type(e).__name__}: {e}")
+
+
+async def _unregister_pending_ticket(channel_id: int) -> None:
+    """Kapatılan veya tamamlanan bir ticket'ı izlemeden çıkarır (idempotent)."""
+    try:
+        async with aiosqlite.connect(KAYIT_TICKETS_DB) as db:
+            await db.execute(
+                "DELETE FROM pending_role_tickets WHERE channel_id = ?",
+                (channel_id,),
+            )
+            await db.commit()
+    except Exception as e:
+        print(f"[HATA] Bekleyen ticket silinirken hata: {type(e).__name__}: {e}")
+
+
+async def _fetch_expired_pending_tickets(now_ts: int):
+    """Süresi dolmuş tüm ticket'ları tek seferde döner."""
+    try:
+        async with aiosqlite.connect(KAYIT_TICKETS_DB) as db:
+            cursor = await db.execute(
+                """
+                SELECT channel_id, guild_id, member_id, formatted_name, age, show_age_text
+                FROM pending_role_tickets
+                WHERE expires_at <= ?
+                """,
+                (now_ts,),
+            )
+            return await cursor.fetchall()
+    except Exception as e:
+        print(f"[HATA] Süresi dolmuş ticket'lar alınırken hata: {type(e).__name__}: {e}")
+        return []
 
 # Yetkilendirme kontrolü
 def check_registration_permission(member: discord.Member) -> bool:
@@ -437,13 +523,30 @@ async def _close_manual_ticket(
     show_age_text: str,
 ):
     """Manuel kayıt sonrası ticket'ı kapatır ve transcript kaydeder."""
+    # Aynı kanal hem in-memory view hem de sweeper tarafından paralel kapatılmaya
+    # çalışılabilir; ilk gelen lock'u alır, ikinci gelen sessizce çıkar.
+    if channel.id in _closing_channels:
+        return
+    _closing_channels.add(channel.id)
+
     try:
+        # Bekleyen ticket kaydını hemen düşür; kapatma yarıda kalsa bile
+        # sweeper aynı kanal için tekrar tekrar denemesin.
+        await _unregister_pending_ticket(channel.id)
+
+        # Kanal başka bir yolla zaten silinmişse iş yok.
+        if guild.get_channel(channel.id) is None:
+            return
+
         closing_embed = discord.Embed(
             title="🔒 Ticket Kapatılıyor",
             description="Ticket 5 saniye içinde kapatılacak.",
             color=discord.Color.orange(),
         )
-        await channel.send(embed=closing_embed)
+        try:
+            await channel.send(embed=closing_embed)
+        except (discord.NotFound, discord.Forbidden):
+            return
         await asyncio.sleep(5)
 
         # Transcript kaydet
@@ -486,10 +589,15 @@ async def _close_manual_ticket(
         except Exception as e:
             print(f"[HATA] Ticket transcript kaydedilirken hata: {type(e).__name__}: {e}")
 
-        await channel.delete(reason="Manuel kayıt tamamlandı - Otomatik kapatma")
+        try:
+            await channel.delete(reason="Manuel kayıt tamamlandı - Otomatik kapatma")
+        except discord.NotFound:
+            pass
 
     except Exception as e:
         print(f"[HATA] Ticket kapatılırken hata: {type(e).__name__}: {e}")
+    finally:
+        _closing_channels.discard(channel.id)
 
 
 class ManualTicketRoleSelectView(discord.ui.View):
@@ -839,6 +947,20 @@ class ManualRegistrationModal(discord.ui.Modal, title="Manuel Kayıt Formu"):
                 )
                 msg = await interaction.channel.send(embed=role_select_embed, view=view)
                 view.message = msg
+
+                # 24 saat sonra rol seçimi tamamlanmamışsa sweeper'ın
+                # ticket'ı otomatik kapatması için kalıcı olarak kaydet.
+                # Bu kayıt bot yeniden başlasa dahi geçerliliğini korur.
+                expires_at = int(discord.utils.utcnow().timestamp()) + PENDING_TICKET_TTL_SECONDS
+                await _register_pending_ticket(
+                    channel_id=interaction.channel.id,
+                    guild_id=guild.id,
+                    member_id=self.member.id,
+                    formatted_name=formatted_name,
+                    age=age,
+                    show_age_text=show_age_text,
+                    expires_at=expires_at,
+                )
             except Exception as e:
                 print(f"[HATA] Rol seçimi embed'i gönderilirken hata: {type(e).__name__}: {e}")
                 try:
@@ -2667,10 +2789,83 @@ class RegistrationButton(discord.ui.View):
 
 class Registration(commands.Cog):
     """Kayıt sistemi cog'u"""
-    
+
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-    
+
+    async def cog_load(self):
+        """Cog yüklendiğinde bekleyen ticket DB'sini hazırla ve sweeper'ı başlat."""
+        await _init_pending_tickets_db()
+        if not self.cleanup_pending_tickets.is_running():
+            self.cleanup_pending_tickets.start()
+
+    async def cog_unload(self):
+        """Cog kaldırıldığında sweeper'ı temiz şekilde durdur."""
+        if self.cleanup_pending_tickets.is_running():
+            self.cleanup_pending_tickets.cancel()
+
+    @tasks.loop(seconds=60)
+    async def cleanup_pending_tickets(self):
+        """24 saat içinde rol seçimi tamamlanmamış kayıt ticket'larını otomatik kapatır.
+
+        discord.ui.View timeout'ları yalnızca bot süreci yaşadığı sürece çalışır;
+        bu döngü ise kalıcı DB kaydına dayanır, böylece bot yeniden başlatılsa
+        dahi süresi dolan ticket'lar en geç 60 saniye içinde kapatılır.
+        """
+        try:
+            now_ts = int(discord.utils.utcnow().timestamp())
+            expired = await _fetch_expired_pending_tickets(now_ts)
+            if not expired:
+                return
+
+            for row in expired:
+                channel_id, guild_id, member_id, formatted_name, age, show_age_text = row
+
+                guild = self.bot.get_guild(guild_id)
+                if guild is None:
+                    await _unregister_pending_ticket(channel_id)
+                    continue
+
+                channel = guild.get_channel(channel_id)
+                if channel is None:
+                    # Kanal başka bir yolla zaten silinmiş; sadece kaydı temizle.
+                    await _unregister_pending_ticket(channel_id)
+                    continue
+
+                member = guild.get_member(member_id)
+                if member is None:
+                    # Kullanıcı sunucudan ayrılmış; transcript akışı için
+                    # gerekli member yok, doğrudan kanalı sil.
+                    try:
+                        await channel.delete(
+                            reason="Kayıt ticket'ı zaman aşımı - üye sunucuda yok"
+                        )
+                    except discord.NotFound:
+                        pass
+                    except Exception as e:
+                        print(
+                            f"[HATA] Sweeper kanal silme hatası: "
+                            f"{type(e).__name__}: {e}"
+                        )
+                    await _unregister_pending_ticket(channel_id)
+                    continue
+
+                try:
+                    await _close_manual_ticket(
+                        channel, guild, member, formatted_name, age, show_age_text
+                    )
+                except Exception as e:
+                    print(
+                        f"[HATA] Sweeper ticket kapatma hatası "
+                        f"(kanal {channel_id}): {type(e).__name__}: {e}"
+                    )
+        except Exception as e:
+            print(f"[HATA] Sweeper döngü hatası: {type(e).__name__}: {e}")
+
+    @cleanup_pending_tickets.before_loop
+    async def before_cleanup_pending_tickets(self):
+        await self.bot.wait_until_ready()
+
     @commands.Cog.listener()
     async def on_ready(self):
         """Bot hazır olduğunda persistent view'ları ekle"""
