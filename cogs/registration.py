@@ -1,6 +1,6 @@
 import discord
 from discord import app_commands
-from discord.ext import commands, tasks
+from discord.ext import commands
 import aiosqlite
 import re
 import asyncio
@@ -20,98 +20,13 @@ LOG_CHANNEL_ID = 1431398643273039934         # Genel log kanalı
 REGISTRATION_LOG_CHANNEL_ID = 1459636312519872553  # Kayıt denemesi log kanalı
 TICKET_LOG_CHANNEL_ID = 1364306112022839436  # Ticket transcript log kanalı
 TICKET_CATEGORY_ID = 1364301691637338132     # Ticket kategorisi
-ROLE_SELECTION_CHANNEL_ID = 1432764482547089570  # Rol alma kanalı
-
 # Yetki
 OWNER_ID = 315888596437696522  # Bot sahibinin ID'si
-
-# Bekleyen kayıt ticket'larının (rol seçimi açık olanlar) izlendiği veritabanı
-KAYIT_TICKETS_DB = "kayit_tickets.db"
-PENDING_TICKET_TTL_SECONDS = 86400  # 24 saat - rol seçimi tamamlanmadığında ticket bu süre sonra kapatılır
 
 # =========================================
 
 # Aynı kanalın paralel yollardan iki kez kapatılmasını engellemek için runtime guard
 _closing_channels: set[int] = set()
-
-
-async def _init_pending_tickets_db() -> None:
-    """Bekleyen kayıt ticket'ları için veritabanı ve tabloyu hazırlar."""
-    async with aiosqlite.connect(KAYIT_TICKETS_DB) as db:
-        await db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS pending_role_tickets (
-                channel_id     INTEGER PRIMARY KEY,
-                guild_id       INTEGER NOT NULL,
-                member_id      INTEGER NOT NULL,
-                formatted_name TEXT    NOT NULL,
-                age            INTEGER NOT NULL,
-                show_age_text  TEXT    NOT NULL,
-                expires_at     INTEGER NOT NULL
-            )
-            """
-        )
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_pending_role_tickets_expires_at "
-            "ON pending_role_tickets(expires_at)"
-        )
-        await db.commit()
-
-
-async def _register_pending_ticket(
-    channel_id: int,
-    guild_id: int,
-    member_id: int,
-    formatted_name: str,
-    age: int,
-    show_age_text: str,
-    expires_at: int,
-) -> None:
-    """Açılan bir kayıt ticket'ını sweeper'ın izlemesi için kaydeder."""
-    try:
-        async with aiosqlite.connect(KAYIT_TICKETS_DB) as db:
-            await db.execute(
-                """
-                INSERT OR REPLACE INTO pending_role_tickets
-                (channel_id, guild_id, member_id, formatted_name, age, show_age_text, expires_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (channel_id, guild_id, member_id, formatted_name, age, show_age_text, expires_at),
-            )
-            await db.commit()
-    except Exception as e:
-        print(f"[HATA] Bekleyen ticket kaydedilirken hata: {type(e).__name__}: {e}")
-
-
-async def _unregister_pending_ticket(channel_id: int) -> None:
-    """Kapatılan veya tamamlanan bir ticket'ı izlemeden çıkarır (idempotent)."""
-    try:
-        async with aiosqlite.connect(KAYIT_TICKETS_DB) as db:
-            await db.execute(
-                "DELETE FROM pending_role_tickets WHERE channel_id = ?",
-                (channel_id,),
-            )
-            await db.commit()
-    except Exception as e:
-        print(f"[HATA] Bekleyen ticket silinirken hata: {type(e).__name__}: {e}")
-
-
-async def _fetch_expired_pending_tickets(now_ts: int):
-    """Süresi dolmuş tüm ticket'ları tek seferde döner."""
-    try:
-        async with aiosqlite.connect(KAYIT_TICKETS_DB) as db:
-            cursor = await db.execute(
-                """
-                SELECT channel_id, guild_id, member_id, formatted_name, age, show_age_text
-                FROM pending_role_tickets
-                WHERE expires_at <= ?
-                """,
-                (now_ts,),
-            )
-            return await cursor.fetchall()
-    except Exception as e:
-        print(f"[HATA] Süresi dolmuş ticket'lar alınırken hata: {type(e).__name__}: {e}")
-        return []
 
 # Yetkilendirme kontrolü
 def check_registration_permission(member: discord.Member) -> bool:
@@ -618,10 +533,6 @@ async def _close_manual_ticket(
     _closing_channels.add(channel.id)
 
     try:
-        # Bekleyen ticket kaydını hemen düşür; kapatma yarıda kalsa bile
-        # sweeper aynı kanal için tekrar tekrar denemesin.
-        await _unregister_pending_ticket(channel.id)
-
         # Kanal başka bir yolla zaten silinmişse iş yok.
         if guild.get_channel(channel.id) is None:
             return
@@ -686,118 +597,6 @@ async def _close_manual_ticket(
         print(f"[HATA] Ticket kapatılırken hata: {type(e).__name__}: {e}")
     finally:
         _closing_channels.discard(channel.id)
-
-
-class ManualTicketRoleSelectView(discord.ui.View):
-    """Manuel kayıt sonrası ticket kanalında bildirim rolü seçim view'ı"""
-
-    _ROLES = {
-        1207713855854223391: "🎉 Etkinlik Bildirim",
-        1207713907498688512: "🎁 Çekiliş Bildirim",
-        1207713950742085643: "❓ Günün Sorusu Bildirim",
-    }
-
-    def __init__(
-        self,
-        bot: commands.Bot,
-        member: discord.Member,
-        channel: discord.TextChannel,
-        formatted_name: str,
-        age: int,
-        show_age_text: str,
-    ):
-        super().__init__(timeout=86400)
-        self.bot = bot
-        self.member = member
-        self.channel = channel
-        self.formatted_name = formatted_name
-        self.age = age
-        self.show_age_text = show_age_text
-        self.selected_roles: set = set()
-        self.message = None
-
-    async def on_timeout(self):
-        if self.message:
-            try:
-                for item in self.children:
-                    item.disabled = True
-                await self.message.edit(view=self)
-            except Exception:
-                pass
-        try:
-            await _close_manual_ticket(
-                self.channel, self.channel.guild, self.member,
-                self.formatted_name, self.age, self.show_age_text,
-            )
-        except Exception as e:
-            print(f"[HATA] Timeout'ta ticket kapatılırken hata: {type(e).__name__}: {e}")
-
-    @discord.ui.button(label="🎉 Etkinlik", style=discord.ButtonStyle.secondary, row=0)
-    async def event_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._toggle_role(interaction, 1207713855854223391, button)
-
-    @discord.ui.button(label="🎁 Çekiliş", style=discord.ButtonStyle.secondary, row=0)
-    async def giveaway_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._toggle_role(interaction, 1207713907498688512, button)
-
-    @discord.ui.button(label="❓ Günün Sorusu", style=discord.ButtonStyle.secondary, row=0)
-    async def qotd_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._toggle_role(interaction, 1207713950742085643, button)
-
-    @discord.ui.button(label="✅ Tamamla", style=discord.ButtonStyle.success, row=1)
-    async def complete_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.stop()
-
-        for role_id in self.selected_roles:
-            try:
-                role = interaction.guild.get_role(role_id)
-                if role:
-                    await self.member.add_roles(role, reason="Manuel kayıt - bildirim rolü seçimi")
-            except Exception as e:
-                print(f"[HATA] Bildirim rolü eklenirken hata (Rol ID: {role_id}): {e}")
-
-        role_names = [
-            interaction.guild.get_role(rid).name
-            for rid in self.selected_roles
-            if interaction.guild.get_role(rid)
-        ]
-        done_embed = discord.Embed(
-            title="✅ Rol Seçimi Tamamlandı",
-            description=(
-                f"**Seçilen Roller:** {', '.join(role_names) if role_names else 'Yok'}\n\n"
-                "Ticket kapatılıyor..."
-            ),
-            color=discord.Color.green(),
-        )
-        await interaction.response.edit_message(embed=done_embed, view=None)
-        await _close_manual_ticket(
-            self.channel, interaction.guild, self.member,
-            self.formatted_name, self.age, self.show_age_text,
-        )
-
-    async def _toggle_role(
-        self,
-        interaction: discord.Interaction,
-        role_id: int,
-        button: discord.ui.Button,
-    ):
-        if role_id in self.selected_roles:
-            self.selected_roles.remove(role_id)
-            button.style = discord.ButtonStyle.secondary
-        else:
-            self.selected_roles.add(role_id)
-            button.style = discord.ButtonStyle.primary
-
-        embed = discord.Embed(
-            title="🔔 Bildirim Rollerini Seçin",
-            description=(
-                f"{self.member.mention}, almak istediğin bildirim rollerini seç.\n"
-                "Seçtikten sonra **Tamamla** butonuna tıkla.\n\n"
-                f"**Seçilen Roller:** {len(self.selected_roles)}/3"
-            ),
-            color=discord.Color.blue(),
-        )
-        await interaction.response.edit_message(embed=embed, view=self)
 
 
 class ManualRegistrationModal(discord.ui.Modal, title="Manuel Kayıt Formu"):
@@ -1011,53 +810,14 @@ class ManualRegistrationModal(discord.ui.Modal, title="Manuel Kayıt Formu"):
             except Exception as e:
                 print(f"[HATA] Ticket mesajı güncellenirken hata: {type(e).__name__}: {e}")
             
-            # Ticket kanalında direkt rol seçimi göster
+            # Ticket'ı kapat
             try:
-                role_select_embed = discord.Embed(
-                    title="🔔 Bildirim Rollerini Seçin",
-                    description=(
-                        f"{self.member.mention}, almak istediğin bildirim rollerini seç.\n"
-                        "Seçtikten sonra **Tamamla** butonuna tıkla.\n\n"
-                        "**Seçilen Roller:** 0/3"
-                    ),
-                    color=discord.Color.blue(),
-                )
-                role_select_embed.set_footer(
-                    text="24 saat içinde işlem yapılmazsa ticket otomatik kapanacak"
-                )
-                view = ManualTicketRoleSelectView(
-                    bot=self.bot,
-                    member=self.member,
-                    channel=interaction.channel,
-                    formatted_name=formatted_name,
-                    age=age,
-                    show_age_text=show_age_text,
-                )
-                msg = await interaction.channel.send(embed=role_select_embed, view=view)
-                view.message = msg
-
-                # 24 saat sonra rol seçimi tamamlanmamışsa sweeper'ın
-                # ticket'ı otomatik kapatması için kalıcı olarak kaydet.
-                # Bu kayıt bot yeniden başlasa dahi geçerliliğini korur.
-                expires_at = int(discord.utils.utcnow().timestamp()) + PENDING_TICKET_TTL_SECONDS
-                await _register_pending_ticket(
-                    channel_id=interaction.channel.id,
-                    guild_id=guild.id,
-                    member_id=self.member.id,
-                    formatted_name=formatted_name,
-                    age=age,
-                    show_age_text=show_age_text,
-                    expires_at=expires_at,
+                await _close_manual_ticket(
+                    interaction.channel, guild, self.member,
+                    formatted_name, age, show_age_text,
                 )
             except Exception as e:
-                print(f"[HATA] Rol seçimi embed'i gönderilirken hata: {type(e).__name__}: {e}")
-                try:
-                    await _close_manual_ticket(
-                        interaction.channel, guild, self.member,
-                        formatted_name, age, show_age_text,
-                    )
-                except Exception as close_err:
-                    print(f"[HATA] Ticket kapatılırken hata: {type(close_err).__name__}: {close_err}")
+                print(f"[HATA] Ticket kapatılırken hata: {type(e).__name__}: {e}")
             
         except Exception as e:
             print(f"[HATA] Manuel kayıt hatası: {type(e).__name__}: {e}")
@@ -1437,41 +1197,121 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
 
                 member = interaction.user
                 formatted_name = turkish_title_case(name)
+                guild = interaction.guild
 
-                # Bildirim rolleri sorusunu göster (show_age zaten modaldan alındı)
-                embed = discord.Embed(
-                    title="✅ İsim Doğrulandı - Otomatik Kayıt",
+                # Rolleri ata
+                unregistered_role = guild.get_role(UNREGISTERED_ROLE_ID)
+                registered_role = guild.get_role(REGISTERED_ROLE_ID)
+
+                if not registered_role:
+                    await self.disable_origin_buttons("Sistem hatası: Kayıtlı rolü bulunamadı!")
+                    return await interaction.followup.send(
+                        "❌ Sistem hatası: Kayıtlı rolü bulunamadı!",
+                        ephemeral=True
+                    )
+
+                try:
+                    if unregistered_role and unregistered_role in member.roles:
+                        await member.remove_roles(unregistered_role, reason="Kayıt işlemi")
+                except Exception as e:
+                    print(f"[HATA] Kayıtsız rolü kaldırılırken hata: {e}")
+
+                try:
+                    await member.add_roles(registered_role, reason="Kayıt işlemi")
+                except Exception as e:
+                    print(f"[HATA] Rol verilirken hata: {e}")
+                    await self.disable_origin_buttons("Sistem hatası: Rol verilemedi!")
+                    return await interaction.followup.send(
+                        "❌ Sistem hatası: Rol verilirken hata oluştu!",
+                        ephemeral=True
+                    )
+
+                # Nickname ayarla
+                new_nickname = f"{formatted_name} | {age}" if show_age else formatted_name
+                try:
+                    await member.edit(nick=new_nickname, reason="Kayıt işlemi")
+                except Exception as e:
+                    print(f"[HATA] İsim değiştirilirken hata: {e}")
+
+                # İstatistik kaydet
+                try:
+                    stats_cog = self.bot.get_cog("RegistrationStats")
+                    if stats_cog:
+                        await stats_cog.add_registration(
+                            user_id=str(member.id),
+                            username=str(member),
+                            name=formatted_name,
+                            age=age,
+                            show_age=show_age
+                        )
+                except Exception as e:
+                    print(f"[HATA] İstatistik kaydedilirken hata: {type(e).__name__}: {e}")
+
+                # Başarı mesajı
+                visibility_status = "Görünür" if show_age else "Gizli"
+                reg_success_embed = discord.Embed(
+                    title="✅ Kayıt Başarılı!",
                     description=(
-                        f"**Otomatik kayıt yapılıyor!**\n\n"
                         f"**İsim:** {formatted_name}\n"
                         f"**Yaş:** {age}\n"
-                        f"**Yaş Görünürlüğü:** {show_age_text}\n\n"
-                        "🔔 **Bildirim rolleri almak ister misiniz?**\n\n"
-                        "Bildirim rolleri alarak:\n"
-                        "• 🎉 Etkinliklerden\n"
-                        "• 🎁 Çekiliş duyurularından\n"
-                        "• ❓ Günün sorusu kanalından\n"
-                        "haberdar olabilirsiniz."
+                        f"**Yaş Durumu:** {visibility_status}\n"
+                        f"**Yeni İsim:** {new_nickname}"
                     ),
                     color=discord.Color.green()
                 )
-                embed.set_footer(text="İsterseniz rolleri daha sonra da alabilirsiniz")
+                reg_success_embed.set_footer(text="Yaş görünürlüğünü /kayit-ayarlari komutuyla değiştirebilirsiniz.")
+                await interaction.followup.send(embed=reg_success_embed, ephemeral=True)
 
-                view = NotificationRoleConfirmView(self.bot, member, name, age, show_age)
-                message = await interaction.followup.send(embed=embed, view=view, ephemeral=True)
-                view.message = message
+                # Log kanalına bildirim gönder
+                try:
+                    log_channel = guild.get_channel(LOG_CHANNEL_ID)
+                    if log_channel:
+                        log_embed = discord.Embed(
+                            title="✅ Yeni Kayıt",
+                            description=f"{member.mention} başarıyla kayıt oldu!",
+                            color=discord.Color.green(),
+                            timestamp=discord.utils.utcnow()
+                        )
+                        log_embed.add_field(
+                            name="👤 Kullanıcı Bilgileri",
+                            value=f"**Kullanıcı:** {member.mention}\n**ID:** `{member.id}`\n**Tag:** {member}",
+                            inline=False
+                        )
+                        log_embed.add_field(
+                            name="📋 Kayıt Bilgileri",
+                            value=f"**İsim:** {formatted_name}\n**Yaş:** {age}\n**Yaş Durumu:** {visibility_status}\n**Yeni Nickname:** {new_nickname}",
+                            inline=False
+                        )
+                        log_embed.add_field(
+                            name="🎭 Rol Değişiklikleri",
+                            value=f"**Verilen:** <@&{REGISTERED_ROLE_ID}>\n**Alınan:** <@&{UNREGISTERED_ROLE_ID}>",
+                            inline=False
+                        )
+                        log_embed.set_thumbnail(url=member.display_avatar.url)
+                        log_embed.set_footer(text="HydRaboN Kayıt Sistemi", icon_url=guild.icon.url if guild.icon else None)
+                        await log_channel.send(embed=log_embed)
+                except Exception as e:
+                    print(f"[HATA] Log kanalına mesaj gönderilirken hata: {type(e).__name__}: {e}")
+
+                # Hoş geldin mesajı gönder
+                try:
+                    welcome_cog = self.bot.get_cog("Welcome")
+                    if welcome_cog:
+                        await welcome_cog.send_welcome_message(member)
+                except Exception as e:
+                    print(f"[HATA] Hoş geldin mesajı gönderilirken hata: {type(e).__name__}: {e}")
 
                 # Orijinal mesajdaki butonları güncelle
                 if self.origin_view and self.origin_message:
                     try:
                         for item in self.origin_view.children:
                             item.disabled = True
-                        success_embed = discord.Embed(
+                        done_embed = discord.Embed(
                             title="✅ Otomatik Kayıt Tamamlandı",
                             description="Otomatik kayıt işlemi başarıyla tamamlandı.",
                             color=discord.Color.green()
                         )
-                        await self.origin_message.edit(embed=success_embed, view=self.origin_view)
+                        await self.origin_message.edit(embed=done_embed, view=self.origin_view)
                         self.origin_view.stop()
                     except Exception as e:
                         print(f"[HATA] Orijinal mesaj güncellenirken hata: {type(e).__name__}: {e}")
@@ -1563,16 +1403,6 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
                     "Yetkililere bildirim gönderildi. Lütfen bekleyin."
                 ),
                 color=discord.Color.orange()
-            )
-            embed.add_field(
-                name="🎭 Kayıt Sonrası Alınabilecek Roller",
-                value=(
-                    "🎉 **Etkinlik Bildirim** - Sunucu etkinliklerinden haberdar olun\n"
-                    "🎁 **Çekiliş Bildirim** - <#1029089842119852114> kanalından haberdar olun\n"
-                    "❓ **Günün Sorusu Bildirim** - <#1202362927248846878> kanalından haberdar olun\n\n"
-                    f"💡 Kaydınız onaylandıktan sonra <#{ROLE_SELECTION_CHANNEL_ID}> kanalından rolleri alabilirsiniz."
-                ),
-                inline=False
             )
             embed.set_thumbnail(url=interaction.user.display_avatar.url)
             embed.set_footer(text="Kayıt Destek Sistemi")
@@ -2235,139 +2065,6 @@ class AgeResetConfirmView(discord.ui.View):
         self.stop()
 
 
-class NotificationRoleSelectView(discord.ui.View):
-    """Bildirim rolleri seçim menüsü"""
-    
-    def __init__(self, bot: commands.Bot, member: discord.Member, name: str, age: int, show_age: bool):
-        super().__init__(timeout=60)
-        self.bot = bot
-        self.member = member
-        self.message = None
-        self.name = name
-        self.age = age
-        self.show_age = show_age
-        
-        # Rol ID'leri
-        self.notification_roles = {
-            1207713855854223391: "🎉 Etkinlik Bildirim",
-            1207713907498688512: "🎁 Çekiliş Bildirim",
-            1207713950742085643: "❓ Günün Sorusu Bildirim"
-        }
-        
-        # Seçilen rolleri takip et
-        self.selected_roles = set()
-    
-    async def on_timeout(self):
-        """Timeout olduğunda butonları devre dışı bırak"""
-        if self.message:
-            try:
-                for item in self.children:
-                    item.disabled = True
-                await self.message.edit(view=self)
-            except:
-                pass
-    
-    @discord.ui.button(label="🎉 Etkinlik", style=discord.ButtonStyle.secondary, row=0)
-    async def event_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Etkinlik bildirim rolü butonuna basıldığında"""
-        role_id = 1207713855854223391
-        await self.toggle_role(interaction, role_id, button)
-    
-    @discord.ui.button(label="🎁 Çekiliş", style=discord.ButtonStyle.secondary, row=0)
-    async def giveaway_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Çekiliş bildirim rolü butonuna basıldığında"""
-        role_id = 1207713907498688512
-        await self.toggle_role(interaction, role_id, button)
-    
-    @discord.ui.button(label="❓ Günün Sorusu", style=discord.ButtonStyle.secondary, row=0)
-    async def qotd_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Günün sorusu bildirim rolü butonuna basıldığında"""
-        role_id = 1207713950742085643
-        await self.toggle_role(interaction, role_id, button)
-    
-    @discord.ui.button(label="✅ Tamamla", style=discord.ButtonStyle.success, row=1)
-    async def complete_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Tamamla butonuna basıldığında"""
-        # Seçilen rol ID'lerini listeye çevir
-        selected_role_ids = list(self.selected_roles)
-        
-        # Kayıt işlemini tamamla
-        age_view = AgeVisibilityView(self.bot, self.member, self.name, self.age)
-        age_view.show_age = self.show_age
-        await age_view.complete_registration(interaction, selected_role_ids)
-    
-    async def toggle_role(self, interaction: discord.Interaction, role_id: int, button: discord.ui.Button):
-        """Rol seçimini toggle et"""
-        if role_id in self.selected_roles:
-            # Rolü kaldır
-            self.selected_roles.remove(role_id)
-            button.style = discord.ButtonStyle.secondary
-        else:
-            # Rolü ekle
-            self.selected_roles.add(role_id)
-            button.style = discord.ButtonStyle.primary
-        
-        # Embed'i güncelle
-        embed = discord.Embed(
-            title="🔔 Bildirim Rollerini Seçin",
-            description=(
-                "Aşağıdaki butonlarla almak istediğiniz bildirim rollerini seçebilirsiniz.\n"
-                "Seçtikten sonra **Tamamla** butonuna tıklayın.\n\n"
-                f"**Seçilen Roller:** {len(self.selected_roles)}/3"
-            ),
-            color=discord.Color.blue()
-        )
-        
-        await interaction.response.edit_message(embed=embed, view=self)
-
-
-class NotificationRoleConfirmView(discord.ui.View):
-    """Bildirim rolleri onay view'ı"""
-    
-    def __init__(self, bot: commands.Bot, member: discord.Member, name: str, age: int, show_age: bool):
-        super().__init__(timeout=60)
-        self.bot = bot
-        self.member = member
-        self.name = name
-        self.age = age
-        self.show_age = show_age
-        self.message = None
-    
-    async def on_timeout(self):
-        """Timeout olduğunda butonları devre dışı bırak"""
-        if self.message:
-            try:
-                for item in self.children:
-                    item.disabled = True
-                await self.message.edit(view=self)
-            except:
-                pass
-    
-    @discord.ui.button(label="Evet", style=discord.ButtonStyle.success, emoji="✅")
-    async def yes_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Evet butonuna basıldığında rol seçim menüsünü göster"""
-        embed = discord.Embed(
-            title="🔔 Bildirim Rollerini Seçin",
-            description=(
-                "Aşağıdaki butonlarla almak istediğiniz bildirim rollerini seçebilirsiniz.\n"
-                "Seçtikten sonra **Tamamla** butonuna tıklayın.\n\n"
-                "**Seçilen Roller:** 0/3"
-            ),
-            color=discord.Color.blue()
-        )
-        
-        view = NotificationRoleSelectView(self.bot, self.member, self.name, self.age, self.show_age)
-        view.message = interaction.message
-        await interaction.response.edit_message(embed=embed, view=view)
-    
-    @discord.ui.button(label="Hayır", style=discord.ButtonStyle.secondary, emoji="❌")
-    async def no_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Hayır butonuna basıldığında direkt kayıt tamamla"""
-        age_view = AgeVisibilityView(self.bot, self.member, self.name, self.age)
-        age_view.show_age = self.show_age
-        await age_view.complete_registration(interaction, selected_roles=None)
-
-
 class AgeVisibilityView(discord.ui.View):
     """Yaş görünürlüğü seçim butonu"""
     
@@ -2394,36 +2091,15 @@ class AgeVisibilityView(discord.ui.View):
     async def show_age_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Yaşı göster butonuna basıldığında"""
         self.show_age = True
-        await self.ask_notification_roles(interaction)
-    
+        await self.complete_registration(interaction)
+
     @discord.ui.button(label="Yaşımı Gizle", style=discord.ButtonStyle.secondary, emoji="👁️")
     async def hide_age_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Yaşı gizle butonuna basıldığında"""
         self.show_age = False
-        await self.ask_notification_roles(interaction)
-    
-    async def ask_notification_roles(self, interaction: discord.Interaction):
-        """Bildirim rolleri sorgusunu göster"""
-        embed = discord.Embed(
-            title="🔔 Bildirim Rolleri",
-            description=(
-                "**Etkinliklerden, çekilişlerden ve günün sorularından haberdar olmak ister misiniz?**\n\n"
-                "Bildirim rolleri alarak:\n"
-                "• 🎉 Etkinliklerden\n"
-                "• 🎁 Çekiliş duyurularından\n"
-                "• ❓ Günün sorusu kanalından\n"
-                "haberdar olabilirsiniz.\n\n"
-                "Rolleri almak ister misiniz?"
-            ),
-            color=discord.Color.blue()
-        )
-        embed.set_footer(text="İsterseniz rolleri daha sonra da alabilirsiniz")
-        
-        view = NotificationRoleConfirmView(self.bot, self.member, self.name, self.age, self.show_age)
-        view.message = interaction.message
-        await interaction.response.edit_message(embed=embed, view=view)
-    
-    async def complete_registration(self, interaction: discord.Interaction, selected_roles: list = None):
+        await self.complete_registration(interaction)
+
+    async def complete_registration(self, interaction: discord.Interaction):
         """Kayıt işlemini tamamla"""
         # Not: Burada defer kullanmıyoruz çünkü embed'i güncelleyeceğiz
         
@@ -2477,36 +2153,15 @@ class AgeVisibilityView(discord.ui.View):
             except Exception as e:
                 print(f"[HATA] İsim değiştirilirken hata: {e}")
             
-            # Bildirim rollerini ver (eğer seçildiyse)
-            if selected_roles:
-                for role_id in selected_roles:
-                    try:
-                        role = guild.get_role(role_id)
-                        if role:
-                            await self.member.add_roles(role, reason="Kayıt sırasında bildirim rolü seçimi")
-                    except Exception as e:
-                        print(f"[HATA] Bildirim rolü eklenirken hata (Rol ID: {role_id}): {e}")
-            
             # Kullanıcıya başarı mesajı gönder
             visibility_status = "Görünür" if self.show_age else "Gizli"
-            
-            description = f"**İsim:** {formatted_name}\n**Yaş:** {self.age}\n**Yaş Durumu:** {visibility_status}\n**Yeni İsim:** {new_nickname}"
-            
-            if selected_roles:
-                role_names = []
-                for role_id in selected_roles:
-                    role = guild.get_role(role_id)
-                    if role:
-                        role_names.append(role.name)
-                if role_names:
-                    description += f"\n**Bildirim Rolleri:** {', '.join(role_names)}"
-            
+
             success_embed = discord.Embed(
                 title="✅ Kayıt Başarılı!",
-                description=description,
+                description=f"**İsim:** {formatted_name}\n**Yaş:** {self.age}\n**Yaş Durumu:** {visibility_status}\n**Yeni İsim:** {new_nickname}",
                 color=discord.Color.green()
             )
-            success_embed.set_footer(text="Yaş görünürlüğünü ve rolleri /kayit-ayarlari komutuyla değiştirebilirsiniz.")
+            success_embed.set_footer(text="Yaş görünürlüğünü /kayit-ayarlari komutuyla değiştirebilirsiniz.")
             
             # Mevcut embed'i güncelle (view'ı kaldır)
             await interaction.response.edit_message(embed=success_embed, view=None)
@@ -2548,10 +2203,7 @@ class AgeVisibilityView(discord.ui.View):
                     
                     # Rol değişiklikleri
                     role_changes = f"**Verilen:** <@&{REGISTERED_ROLE_ID}>\n**Alınan:** <@&{UNREGISTERED_ROLE_ID}>"
-                    if selected_roles:
-                        role_mentions = " ".join([f"<@&{role_id}>" for role_id in selected_roles])
-                        role_changes += f"\n**Bildirim Rolleri:** {role_mentions}"
-                    
+
                     log_embed.add_field(
                         name="🎭 Rol Değişiklikleri",
                         value=role_changes,
@@ -2789,79 +2441,6 @@ class Registration(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-
-    async def cog_load(self):
-        """Cog yüklendiğinde bekleyen ticket DB'sini hazırla ve sweeper'ı başlat."""
-        await _init_pending_tickets_db()
-        if not self.cleanup_pending_tickets.is_running():
-            self.cleanup_pending_tickets.start()
-
-    async def cog_unload(self):
-        """Cog kaldırıldığında sweeper'ı temiz şekilde durdur."""
-        if self.cleanup_pending_tickets.is_running():
-            self.cleanup_pending_tickets.cancel()
-
-    @tasks.loop(seconds=60)
-    async def cleanup_pending_tickets(self):
-        """24 saat içinde rol seçimi tamamlanmamış kayıt ticket'larını otomatik kapatır.
-
-        discord.ui.View timeout'ları yalnızca bot süreci yaşadığı sürece çalışır;
-        bu döngü ise kalıcı DB kaydına dayanır, böylece bot yeniden başlatılsa
-        dahi süresi dolan ticket'lar en geç 60 saniye içinde kapatılır.
-        """
-        try:
-            now_ts = int(discord.utils.utcnow().timestamp())
-            expired = await _fetch_expired_pending_tickets(now_ts)
-            if not expired:
-                return
-
-            for row in expired:
-                channel_id, guild_id, member_id, formatted_name, age, show_age_text = row
-
-                guild = self.bot.get_guild(guild_id)
-                if guild is None:
-                    await _unregister_pending_ticket(channel_id)
-                    continue
-
-                channel = guild.get_channel(channel_id)
-                if channel is None:
-                    # Kanal başka bir yolla zaten silinmiş; sadece kaydı temizle.
-                    await _unregister_pending_ticket(channel_id)
-                    continue
-
-                member = guild.get_member(member_id)
-                if member is None:
-                    # Kullanıcı sunucudan ayrılmış; transcript akışı için
-                    # gerekli member yok, doğrudan kanalı sil.
-                    try:
-                        await channel.delete(
-                            reason="Kayıt ticket'ı zaman aşımı - üye sunucuda yok"
-                        )
-                    except discord.NotFound:
-                        pass
-                    except Exception as e:
-                        print(
-                            f"[HATA] Sweeper kanal silme hatası: "
-                            f"{type(e).__name__}: {e}"
-                        )
-                    await _unregister_pending_ticket(channel_id)
-                    continue
-
-                try:
-                    await _close_manual_ticket(
-                        channel, guild, member, formatted_name, age, show_age_text
-                    )
-                except Exception as e:
-                    print(
-                        f"[HATA] Sweeper ticket kapatma hatası "
-                        f"(kanal {channel_id}): {type(e).__name__}: {e}"
-                    )
-        except Exception as e:
-            print(f"[HATA] Sweeper döngü hatası: {type(e).__name__}: {e}")
-
-    @cleanup_pending_tickets.before_loop
-    async def before_cleanup_pending_tickets(self):
-        await self.bot.wait_until_ready()
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -3253,40 +2832,6 @@ class Registration(commands.Cog):
                     embed = main_view.create_main_embed()
                     await interaction.response.edit_message(embed=embed, view=main_view)
             
-            # Rol yönetimi için geri dönüş view'ı
-            class RoleManageViewWithBack(discord.ui.View):
-                def __init__(self, member, bot, stats_cog, name, age, current_show_age):
-                    super().__init__(timeout=300)
-                    self.member = member
-                    self.bot = bot
-                    self.stats_cog = stats_cog
-                    self.name = name
-                    self.age = age
-                    self.current_show_age = current_show_age
-                    self.message = None
-                    self.add_item(RoleManageSelect(member, self))
-                
-                async def on_timeout(self):
-                    """Timeout olduğunda butonları devre dışı bırak"""
-                    if self.message:
-                        try:
-                            for item in self.children:
-                                item.disabled = True
-                            await self.message.edit(view=self)
-                        except:
-                            pass
-                
-                @discord.ui.button(label="Ana Sayfaya Dön", style=discord.ButtonStyle.secondary, emoji="🏠", row=1)
-                async def back_to_home(self, interaction: discord.Interaction, button: discord.ui.Button):
-                    """Ana ayarlar sayfasına dön"""
-                    # interaction.user her seferinde Discord'dan gelen güncel member verisini taşır
-                    main_view = RegistrationSettingsView(
-                        self.bot, self.stats_cog, interaction.user,
-                        self.name, self.age, self.current_show_age, self.message
-                    )
-                    embed = main_view.create_main_embed()
-                    await interaction.response.edit_message(embed=embed, view=main_view)
-            
             # Yaş sıfırlama onay view'ı geri dönüş ile
             class AgeResetConfirmWithBackView(discord.ui.View):
                 def __init__(self, bot, current_name, current_age, stats_cog, member, current_show_age):
@@ -3353,121 +2898,6 @@ class Registration(commands.Cog):
                     embed = main_view.create_main_embed()
                     await interaction.response.edit_message(embed=embed, view=main_view)
             
-            # Rol düzenleme select menu
-            class RoleManageSelect(discord.ui.Select):
-                def __init__(self, member: discord.Member, parent_view):
-                    self.member = member
-                    self.parent_view = parent_view
-                    
-                    # Yönetilebilir rol ID'leri
-                    self.manageable_role_ids = [
-                        1207713855854223391,
-                        1207713907498688512,
-                        1207713950742085643
-                    ]
-                    
-                    # Seçenekleri oluştur
-                    options = []
-                    for role_id in self.manageable_role_ids:
-                        role = member.guild.get_role(role_id)
-                        if role:
-                            # Kullanıcının bu rolü var mı kontrol et
-                            has_role = role in member.roles
-                            options.append(
-                                discord.SelectOption(
-                                    label=role.name,
-                                    value=str(role_id),
-                                    description=f"{'✅ Aktif' if has_role else '❌ Pasif'}",
-                                    emoji="✅" if has_role else "❌"
-                                )
-                            )
-                    
-                    super().__init__(
-                        placeholder="Düzenlemek istediğiniz rolleri seçin...",
-                        min_values=0,
-                        max_values=len(options),
-                        options=options,
-                        custom_id="role_manage_select"
-                    )
-                
-                async def callback(self, interaction: discord.Interaction):
-                    await interaction.response.defer()
-
-                    try:
-                        # Her interaction Discord'dan güncel member verisi getirir;
-                        # self.member eski interaction'dan kalmış olabilir.
-                        member = interaction.user
-
-                        # Seçilen rol ID'leri
-                        selected_role_ids = [int(value) for value in self.values]
-
-                        # Sadece seçilen rolleri toggle et
-                        added_roles = []
-                        removed_roles = []
-
-                        # Sadece seçilen roller üzerinde işlem yap
-                        for role_id in selected_role_ids:
-                            role = member.guild.get_role(role_id)
-                            if not role:
-                                continue
-
-                            has_role = role in member.roles
-
-                            if has_role:
-                                # Rol kullanıcıda var, kaldır (toggle)
-                                try:
-                                    await member.remove_roles(role, reason="Kullanıcı rol yönetimi - toggle")
-                                    removed_roles.append(role.name)
-                                except Exception as e:
-                                    print(f"[HATA] Rol kaldırılırken hata ({role.name}): {e}")
-                            else:
-                                # Rol kullanıcıda yok, ekle (toggle)
-                                try:
-                                    await member.add_roles(role, reason="Kullanıcı rol yönetimi - toggle")
-                                    added_roles.append(role.name)
-                                except Exception as e:
-                                    print(f"[HATA] Rol eklenirken hata ({role.name}): {e}")
-                        
-                        # Sonuç mesajı
-                        result_parts = []
-                        if added_roles:
-                            result_parts.append(f"**Eklenen Roller:** {', '.join(added_roles)}")
-                        if removed_roles:
-                            result_parts.append(f"**Kaldırılan Roller:** {', '.join(removed_roles)}")
-                        
-                        if not result_parts:
-                            result_msg = "Herhangi bir değişiklik yapılmadı."
-                            embed_color = discord.Color.orange()
-                        else:
-                            result_msg = "\n\n".join(result_parts)
-                            embed_color = discord.Color.green()
-                        
-                        embed = discord.Embed(
-                            title="✅ Roller Güncellendi!",
-                            description=result_msg,
-                            color=embed_color
-                        )
-                        embed.set_footer(text="Ana sayfaya dönmek için aşağıdaki butona tıklayın")
-                        
-                        # Geri dön view'ı
-                        back_view = BackToSettingsView(
-                            self.parent_view.bot,
-                            self.parent_view.stats_cog,
-                            interaction.user,
-                            self.parent_view.name,
-                            self.parent_view.age,
-                            self.parent_view.current_show_age
-                        )
-                        back_view.message = self.parent_view.message
-                        await interaction.edit_original_response(embed=embed, view=back_view)
-                        
-                    except Exception as e:
-                        print(f"[HATA] Rol yönetimi hatası: {e}")
-                        await interaction.followup.send(
-                            "❌ Roller güncellenirken bir hata oluştu!",
-                            ephemeral=True
-                        )
-            
             # Ana ayarlar view'ı
             class RegistrationSettingsView(discord.ui.View):
                 def __init__(self, bot, stats_cog, member, name, age, current_show_age, message=None):
@@ -3502,7 +2932,7 @@ class Registration(commands.Cog):
                 def create_main_embed(self):
                     """Ana sayfa embed'ini oluştur"""
                     current_status = "Görünür ✅" if self.current_show_age else "Gizli 👁️"
-                    
+
                     embed = discord.Embed(
                         title="⚙️ Kayıt Ayarları",
                         description=(
@@ -3515,9 +2945,6 @@ class Registration(commands.Cog):
                             "• Yaşınızın kullanıcı adınızda görünmesini ayarlayın\n"
                             "• Göster: `{0} | {1}` formatında\n"
                             "• Gizle: `{0}` formatında\n\n"
-                            "🔸 **Rol Yönetimi**\n"
-                            "• İstediğiniz rolleri kendiniz ekleyip kaldırabilirsiniz\n"
-                            "• Rollerinizi dilediğiniz gibi özelleştirin\n\n"
                             "🔸 **Yaş Sıfırlama**\n"
                             "• Yanlış yaş girildiyse yetkili desteği ile düzeltilebilir\n"
                             "• Ticket açılarak değişiklik talebinde bulunabilirsiniz"
@@ -3566,41 +2993,6 @@ class Registration(commands.Cog):
                         print(f"[HATA] Yaş sıfırlama onay mesajı gösterilirken hata: {e}")
                         await interaction.response.send_message(
                             "❌ Bir hata oluştu. Lütfen tekrar deneyiniz.",
-                            ephemeral=True
-                        )
-                
-                @discord.ui.button(label="Rolleri Düzenle", style=discord.ButtonStyle.primary, emoji="🎭", row=1)
-                async def manage_roles(self, interaction: discord.Interaction, button: discord.ui.Button):
-                    """Rol yönetim menüsünü aç"""
-                    try:
-                        embed = discord.Embed(
-                            title="🎭 Rol Yönetimi",
-                            description=(
-                                "Aşağıdaki menüden düzenlemek istediğiniz rolleri seçebilirsiniz.\n\n"
-                                "**Nasıl Kullanılır:**\n"
-                                "• Menüden değiştirmek istediğiniz rolleri seçin\n"
-                                "• Seçtiğiniz rol varsa kaldırılır, yoksa eklenir\n"
-                                "• Hiçbir rol seçmezseniz hiçbir değişiklik yapılmaz\n\n"
-                                "✅ = Şu anda aktif\n"
-                                "❌ = Şu anda pasif"
-                            ),
-                            color=discord.Color.blue()
-                        )
-                        embed.set_footer(text="Değişiklikler anında uygulanacaktır")
-                        
-                        # interaction.user Discord'dan gelen güncel member verisini taşır;
-                        # self.member eski interaction'dan kalıp stale olabilir
-                        role_view = RoleManageViewWithBack(
-                            interaction.user,
-                            self.bot, self.stats_cog, self.name, self.age, self.current_show_age
-                        )
-                        role_view.message = self.message
-                        await interaction.response.edit_message(embed=embed, view=role_view)
-                        
-                    except Exception as e:
-                        print(f"[HATA] Rol yönetim menüsü açılırken hata: {e}")
-                        await interaction.response.send_message(
-                            "❌ Rol yönetim menüsü açılırken bir hata oluştu!",
                             ephemeral=True
                         )
                 
