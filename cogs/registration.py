@@ -5,6 +5,7 @@ import aiosqlite
 import re
 import asyncio
 import io
+import datetime
 from typing import Optional
 
 # ============ GLOBAL AYARLAR ============
@@ -1087,6 +1088,8 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
         # Hesap yaşı kontrolü - 14 günden yeni hesaplar yetkili çağıramaz
         account_age = discord.utils.utcnow() - interaction.user.created_at
         if account_age.days < 14:
+            can_register_at = interaction.user.created_at + datetime.timedelta(days=14)
+            can_register_ts = int(can_register_at.timestamp())
             await self.disable_origin_buttons("Hesabınız 14 günlük olmadığı için bu özelliği kullanamazsınız.")
             await _log_new_account_attempt(
                 interaction.guild,
@@ -1098,7 +1101,8 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
                 show_age_text=_format_show_age_text(show_age_str),
             )
             return await interaction.followup.send(
-                "❌ Discord hesabınız 14 günlük olmadığı için bu özelliği kullanamazsınız.",
+                f"❌ Discord hesabınız **{account_age.days} gün** önce oluşturulmuş, bu özelliği kullanamazsınız.\n"
+                f"📅 Kayıt olabileceğiniz tarih: <t:{can_register_ts}:D> (<t:{can_register_ts}:R>)",
                 ephemeral=True
             )
 
@@ -2352,13 +2356,16 @@ class RegistrationButton(discord.ui.View):
                     interaction.guild, member, "Kayıt Ol", account_age.days
                 )
                 # Hesap 14 günden yeni - Kayıt ve yetkili çağırma engellendi
+                can_register_at = member.created_at + datetime.timedelta(days=14)
+                can_register_ts = int(can_register_at.timestamp())
                 embed = discord.Embed(
                     title="⏰ Hesap Yaşı Yetersiz",
                     description=(
                         "❌ **Kayıt olamazsınız!**\n\n"
                         f"Discord hesabınız **{account_age.days} gün** önce oluşturulmuş.\n"
-                        f"Kayıt olabilmek için hesabınızın en az **14 gün** eski olması gerekmektedir.\n\n"
-                        f"⏳ **Kalan Süre:** {14 - account_age.days} gün"
+                        f"Kayıt olabilmek için hesabınızın en az **14 günlük** olması gerekmektedir.\n\n"
+                        f"📅 **Kayıt olabileceğiniz tarih:** <t:{can_register_ts}:D>\n"
+                        f"⏳ **Kalan süre:** <t:{can_register_ts}:R>"
                     ),
                     color=discord.Color.red()
                 )
@@ -2398,13 +2405,16 @@ class RegistrationButton(discord.ui.View):
                 await _log_new_account_attempt(
                     interaction.guild, member, "Yetkili Çağır", account_age.days
                 )
+                can_register_at = member.created_at + datetime.timedelta(days=14)
+                can_register_ts = int(can_register_at.timestamp())
                 embed = discord.Embed(
                     title="⏰ Hesap Yaşı Yetersiz",
                     description=(
                         "❌ **Bu özelliği kullanamazsınız!**\n\n"
                         f"Discord hesabınız **{account_age.days} gün** önce oluşturulmuş.\n"
-                        f"Yetkili çağırabilmek için hesabınızın en az **14 gün** eski olması gerekmektedir.\n\n"
-                        f"⏳ **Kalan Süre:** {14 - account_age.days} gün"
+                        f"Yetkili çağırabilmek için hesabınızın en az **14 günlük** olması gerekmektedir.\n\n"
+                        f"📅 **Kayıt olabileceğiniz tarih:** <t:{can_register_ts}:D>\n"
+                        f"⏳ **Kalan süre:** <t:{can_register_ts}:R>"
                     ),
                     color=discord.Color.red()
                 )
