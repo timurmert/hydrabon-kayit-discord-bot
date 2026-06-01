@@ -225,16 +225,17 @@ class RegistrationModal(discord.ui.Modal, title="Kayıt Formu"):
         """Kayıt denemesini log kanalına gönderir"""
         try:
             guild = interaction.guild
-            log_channel = guild.get_channel(REGISTRATION_LOG_CHANNEL_ID)
-            
+            channel_id = LOG_CHANNEL_ID if success else REGISTRATION_LOG_CHANNEL_ID
+            log_channel = guild.get_channel(channel_id)
+
             if not log_channel:
-                print(f"[UYARI] Kayıt log kanalı bulunamadı! Kanal ID: {REGISTRATION_LOG_CHANNEL_ID}")
+                print(f"[UYARI] Log kanalı bulunamadı! Kanal ID: {channel_id}")
                 return
-            
+
             # Embed oluştur
             if success:
                 embed = discord.Embed(
-                    title="✅ Başarılı Kayıt Denemesi",
+                    title="✅ Başarılı Kayıt",
                     color=discord.Color.green(),
                     timestamp=discord.utils.utcnow()
                 )
@@ -1158,47 +1159,6 @@ class SupportTicketModal(discord.ui.Modal, title="Destek Talebi"):
 
             if name_valid:
                 # İsim veritabanında bulundu ve hesap yeterince eski - otomatik kayıt akışını başlat
-                # Kayıt log'unu gönder (otomatik kayıt olarak)
-                try:
-                    log_channel = interaction.guild.get_channel(REGISTRATION_LOG_CHANNEL_ID)
-                    if log_channel:
-                        log_embed = discord.Embed(
-                            title="✅ Yetkili Çağır → Otomatik Kayıt",
-                            color=discord.Color.green(),
-                            timestamp=discord.utils.utcnow()
-                        )
-                        log_embed.add_field(
-                            name="👤 Kullanıcı Bilgileri",
-                            value=(
-                                f"**Kullanıcı:** {interaction.user.mention}\n"
-                                f"**Kullanıcı Adı:** {interaction.user.name}\n"
-                                f"**Kullanıcı ID:** `{interaction.user.id}`"
-                            ),
-                            inline=False
-                        )
-                        log_embed.add_field(
-                            name="📝 Kayıt Bilgileri",
-                            value=(
-                                f"**İsim:** {name}\n"
-                                f"**Yaş:** {age_str}\n"
-                                f"**Yaş Görünürlüğü:** {show_age_text}"
-                            ),
-                            inline=False
-                        )
-                        log_embed.add_field(
-                            name="ℹ️ Durum",
-                            value="İsim veritabanında bulundu. Yetkili çağır yerine otomatik kayıt başlatıldı.",
-                            inline=False
-                        )
-                        log_embed.set_thumbnail(url=interaction.user.display_avatar.url)
-                        log_embed.set_footer(
-                            text="HydRaboN Kayıt Sistemi",
-                            icon_url=interaction.guild.icon.url if interaction.guild.icon else None
-                        )
-                        await log_channel.send(embed=log_embed)
-                except Exception as e:
-                    print(f"[HATA] Otomatik kayıt log'u gönderilirken hata: {type(e).__name__}: {e}")
-
                 member = interaction.user
                 formatted_name = turkish_title_case(name)
                 guild = interaction.guild
