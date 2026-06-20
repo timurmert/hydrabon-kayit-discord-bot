@@ -352,10 +352,10 @@ class RegistrationModal(discord.ui.Modal, title="Kayıt Formu"):
             )
         
         # Başarılı - Tüm kontroller geçti
-        await self.log_registration_attempt(
-            interaction, name, age_str, True
-        )
-        
+        # Not: Başarılı kayıt logu, yaş görünürlüğü seçildikten sonra
+        # AgeVisibilityView.complete_registration içinde "✅ Yeni Kayıt"
+        # embed'i ile tek seferde atılır. Burada ikinci bir log atılmaz.
+
         # Bilgiler doğru - Yaş görünürlüğü sorusu göster
         member = interaction.user
         formatted_name = turkish_title_case(name)
