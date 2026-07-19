@@ -27,7 +27,7 @@ intents.members = True
 intents.presences = True
 intents.voice_states = False  # Ses kanalı devre dışı
 
-bot = commands.Bot(command_prefix=COMMAND_PREFIX, intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
 # ==== EVENTS ====
 @bot.event
